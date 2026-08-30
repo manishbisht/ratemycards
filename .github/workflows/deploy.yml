@@ -55,8 +55,12 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       WORKER_SECRET_ADMIN_TOKEN: ${{ secrets.WORKER_SECRET_ADMIN_TOKEN }}
-      WORKER_SECRETS_FILE: ${{ runner.temp }}/ratemycards-worker-secrets.json
     steps:
+      # `runner` is not a valid context in job-level `env`, so the path is
+      # resolved here instead. First step, so the `if: always()` cleanup below
+      # always knows what to delete.
+      - name: Resolve Worker secrets file path
+        run: echo "WORKER_SECRETS_FILE=$RUNNER_TEMP/ratemycards-worker-secrets.json" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
