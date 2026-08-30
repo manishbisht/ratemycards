@@ -13,7 +13,8 @@ repo root pins it; run `nvm use`.
 | banks   | `src/modules/banks/` | `banks` — card issuers |
 | cards   | `src/modules/cards/` | `cards` — the catalog of supported cards |
 | scoring | `src/modules/scoring/` | `scoring_criteria`, `card_scores` — the rubric |
-| wallet  | `src/modules/wallet/` | no tables — scores a set of cards on the fly |
+| wallet  | `src/modules/wallet/` | `wallet_cards` — which cards a signed-in person holds |
+| users   | `src/modules/users/` | `users` — who is behind a session |
 
 A bank has many cards (`cards.bank_id`). A card is scored 0–10 against each
 scoring criterion (`card_scores`), and its rating is derived from those.
@@ -22,7 +23,8 @@ A module is a folder of `routes.ts` / `queries.ts` / `validate.ts` /
 `<name>Types.ts`, plus one `app.route(...)` line in `src/index.ts`. The rule that
 makes it pay off: **no module writes SQL against another module's tables.** The
 one relaxation is reading across a declared foreign key -- `cards` joins `banks`
-to embed the issuer name, and says so at the top of its `queries.ts`.
+to embed the issuer name and, for a signed-in caller, `wallet_cards`; it says so
+at the top of its `queries.ts`.
 
 ## Running it
 
@@ -38,6 +40,45 @@ npm run typecheck
 
 None of the above touches Cloudflare — local D1 is simulated by Miniflare and
 persisted under `.wrangler/state/`.
+
+## Auth
+
+Two unrelated mechanisms, both on the `Authorization: Bearer` header:
+
+| | Guards | Checked by |
+| --- | --- | --- |
+| `ADMIN_TOKEN` | catalog writes | `src/http/adminAuth.ts` |
+| Clerk session token | wallets, `/v1/users/me` | `src/http/clerkAuth.ts` |
+
+Session tokens are verified against Clerk's JWKS, fetched with
+`CLERK_SECRET_KEY` and cached per isolate for five minutes. A token arriving
+with an unseen key id forces an immediate re-fetch, so a Clerk key rotation
+needs no action here. The dashboard also offers a static PEM ("legacy JWT
+verification key") that would avoid the fetch; it is not used, because it knows
+nothing about rotation and would 401 every request until replaced by hand.
+
+`authorizedParties` is built from `ALLOWED_ORIGINS`, which is what stops a token
+minted for a different Clerk app being spent here. Both middlewares fail closed.
+
+`requireUser` rejects anonymous callers. `optionalUser` identifies one when a
+token is present and shrugs otherwise -- that is what lets `GET /v1/cards` serve
+the public catalog and a signed-in caller's view of it from one route. A
+present-but-invalid token is still rejected either way, so an expired session
+reads as "sign in again" rather than as a mysteriously empty wallet.
+
+A user row appears two ways, both landing on the same upsert: the Clerk webhook
+is the primary path, and `requireUser` upserts as a backstop, so a dropped
+webhook self-heals on the user's next request.
+
+The two are not interchangeable. A session token carries no profile -- `sub`,
+`sid`, `azp` and timestamps, nothing else, unless extra claims are added to the
+session token in the Clerk dashboard -- so the backstop can only mint a row with
+a `clerk_id` on it. **Email, name and avatar come from the webhook**, which is
+also the only way a deletion is ever observed: someone Clerk has deleted cannot
+present a token to tell us so. That is why the upsert uses `COALESCE` -- the
+sparse path must never blank what the rich one filled in. Our `id` and Clerk's `clerk_id`
+both start with `user_` but are not interchangeable -- ours is 32 hex, theirs is
+mixed-case base58. Everything downstream keys off ours.
 
 ## Cards API
 
@@ -65,6 +106,13 @@ Reads are public. Writes need `Authorization: Bearer $ADMIN_TOKEN`.
 | `POST` | `/v1/cards` | admin — mints the id and creates the card |
 | `PATCH` | `/v1/cards/:id` | admin — partial update |
 | `DELETE` | `/v1/cards/:id` | admin — soft delete (`is_active = 0`) |
+| `GET` | `/v1/users/me` | session — the caller's own row, and only ever their own |
+| `POST` | `/v1/webhooks/clerk` | signed by Clerk — keeps `users` in step |
+| `GET` | `/v1/wallet` | session — the stored wallet, cards resolved and scored |
+| `POST` | `/v1/wallet/merge` | session — folds local picks in; unions, never overwrites |
+| `PUT` | `/v1/wallet/cards/:cardId` | session — add, idempotent |
+| `PATCH` | `/v1/wallet/cards/:cardId` | session — record a verification status |
+| `DELETE` | `/v1/wallet/cards/:cardId` | session — remove, idempotent, 204 |
 
 Lists return `{ "data": [...], "total": n }` where `total` ignores pagination.
 Single reads return the card bare. Every failure returns
@@ -187,16 +235,17 @@ and `{ "scores": [] }` clears the card.
 Networks (Visa / Mastercard / RuPay and their variants) are not modelled yet;
 they arrive in a later migration.
 
-## Wallet preview
+## Wallets
 
-A wallet is just a set of card ids. There is no wallets table and no accounts
-yet — the client keeps its own ids and asks the API what they are worth:
+An anonymous visitor's wallet is just a set of card ids held in their browser,
+and `/v1/wallet/preview` asks the API what they are worth without storing
+anything:
 
 ```
 POST /v1/wallet/preview   { "cardIds": ["card_…", "card_…"] }
 → { "score": 1448, "maxScore": 3000,
     "tier": { "name": "Specialist", "color": "#60A5FA", "min": 1400 },
-    "cardCount": 2, "cards": [ … ], "unknownIds": [] }
+    "cardCount": 2, "unknownIds": [] }
 ```
 
 ```
@@ -211,6 +260,24 @@ should silently lose points because the catalog moved on.
 
 **This endpoint is the only implementation of the formula.** The frontend used
 to carry a copy; it now reads the score from here so the two cannot drift.
+
+### Stored wallets
+
+Signing in turns that set of ids into rows in `wallet_cards`. `POST
+/v1/wallet/merge` runs once at sign-in and *unions* the browser's picks with
+whatever the account already held: a card already on the server keeps the
+verification it earned, so a fresh device cannot downgrade it. After that the
+client writes through on every change, and the server is the source of truth.
+
+Verification status is recorded, not decided. The ₹1-authorisation flow still
+runs in the browser, so `PATCH /v1/wallet/cards/:cardId` takes the caller's word
+for their own wallet — a trust gap that closes when that flow moves server-side.
+The `verified_at` timestamp is the server's to set, and a CHECK constraint keeps
+it absent for every status but `verified`.
+
+For a signed-in caller, each card from `GET /v1/cards` also carries a `wallet`
+block — `inWallet`, `verificationStatus`, `verifiedAt`. It is absent entirely
+for anonymous callers, so the public response shape is unchanged.
 
 ## Deploying
 

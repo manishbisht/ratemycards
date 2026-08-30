@@ -1,9 +1,12 @@
+import { useSignIn } from '@clerk/react'
+import { useEffect, useState } from 'react'
+import { ssoCallbackUrl, ssoCompleteUrl } from '../auth/ssoRedirect'
 import { Button } from '../components/Button'
 import { Screen } from '../components/Screen'
 import type { GlowSpec } from '../components/Screen'
 import { navigate } from '../router/hashRouter'
-import { useAppDispatch } from '../store/hooks'
-import { walletActions } from '../store/walletSlice'
+import { useAppSelector } from '../store/hooks'
+import { selectWallet } from '../store/selectors'
 import styles from './LoginPage.module.css'
 
 const GLOWS: GlowSpec[] = [
@@ -12,7 +15,30 @@ const GLOWS: GlowSpec[] = [
 ]
 
 export function LoginPage() {
-  const dispatch = useAppDispatch()
+  const { signIn, fetchStatus } = useSignIn()
+  const signedIn = useAppSelector(selectWallet).user !== null
+  const [error, setError] = useState<string | null>(null)
+
+  // Covers arriving at #/login with a session already in hand; the Google round
+  // trip itself returns to the site root and is routed on before this mounts.
+  useEffect(() => {
+    if (signedIn) navigate({ kind: 'verify' })
+  }, [signedIn])
+
+  async function continueWithGoogle() {
+    setError(null)
+    const result = await signIn.sso({
+      strategy: 'oauth_google',
+      redirectUrl: ssoCompleteUrl(),
+      redirectCallbackUrl: ssoCallbackUrl(),
+    })
+
+    // A rejected start leaves the visitor on this screen, so it has to say so —
+    // the redirect that would normally take over never happens.
+    if (result.error) {
+      setError(result.error.message ?? 'Could not start Google sign-in. Please try again.')
+    }
+  }
 
   return (
     <Screen glows={GLOWS} className={styles.content}>
@@ -23,14 +49,18 @@ export function LoginPage() {
 
         <Button
           className={styles.google}
-          onClick={() => {
-            dispatch(walletActions.signIn({ name: 'Arjun K', email: 'arjun@example.com' }))
-            navigate({ kind: 'verify' })
-          }}
+          disabled={fetchStatus === 'fetching'}
+          onClick={continueWithGoogle}
         >
           <span className={styles.googleMark} aria-hidden="true" />
-          Continue with Google
+          {fetchStatus === 'fetching' ? 'Opening Google…' : 'Continue with Google'}
         </Button>
+
+        {error && (
+          <div className={styles.error} role="alert">
+            {error}
+          </div>
+        )}
 
         <div className={styles.footnote}>
           We only read your name and email. Nothing is posted anywhere.

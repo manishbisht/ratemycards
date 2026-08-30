@@ -5,6 +5,8 @@ import { notFound, onError } from './http/errors'
 import { bankRoutes } from './modules/banks/routes'
 import { cardRoutes } from './modules/cards/routes'
 import { criterionRoutes } from './modules/scoring/routes'
+import { clerkWebhookRoutes } from './modules/users/webhook'
+import { userRoutes } from './modules/users/routes'
 import { walletRoutes } from './modules/wallet/routes'
 
 /**
@@ -33,6 +35,8 @@ app.get('/health', (c) => c.json({ ok: true }))
 app.route('/v1/banks', bankRoutes)
 app.route('/v1/cards', cardRoutes)
 app.route('/v1/criteria', criterionRoutes)
+app.route('/v1/users', userRoutes)
+app.route('/v1/webhooks', clerkWebhookRoutes)
 app.route('/v1/wallet', walletRoutes)
 
 app.notFound(notFound)

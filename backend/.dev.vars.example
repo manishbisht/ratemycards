@@ -1,3 +1,15 @@
-# Copy to .dev.vars for local development. Never commit the real token.
-# In production: npx wrangler secret put ADMIN_TOKEN
+# Copy to .dev.vars for local development. Never commit the real values.
+# In production each of these is a Worker secret; see the "Create Worker
+# secrets file" step in .github/workflows/deploy.yml for how they get there.
+
+# npx wrangler secret put ADMIN_TOKEN
 ADMIN_TOKEN="local-dev-admin-token"
+
+# Signing secret for the Clerk webhook that keeps the users table in step.
+# dashboard.clerk.com -> Webhooks -> the endpoint -> Signing Secret.
+CLERK_WEBHOOK_SIGNING_SECRET="whsec_..."
+
+# Clerk backend API key, from dashboard.clerk.com -> API keys. Fetches the JWKS
+# that verifies the session tokens the frontend sends as
+# `Authorization: Bearer <jwt>`. `npx clerk@latest env pull` writes this for you.
+CLERK_SECRET_KEY="sk_test_..."

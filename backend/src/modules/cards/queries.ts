@@ -5,12 +5,13 @@ import { toRating } from '../scoring/scoringTypes'
 import type { RatingRow } from '../scoring/scoringTypes'
 import { generateCardId } from './cardTypes'
 import type { CardFilters, CardInput, CardPatch, RatedCard } from './cardTypes'
+import type { VerificationStatus } from '../wallet/walletTypes'
 
 /**
- * This module owns the `cards` table. It *reads* `banks` and the scoring
- * tables through their foreign keys -- to embed the issuer name and to derive
- * the rating -- which is the one documented exception to modules keeping to
- * their own tables. It never writes to either.
+ * This module owns the `cards` table. It *reads* `banks`, the scoring tables
+ * and -- for a signed-in caller -- `wallet_cards`, which is the one documented
+ * exception to modules keeping to their own tables. It never writes to any of
+ * them.
  */
 
 type CardRow = RatingRow & {
@@ -22,10 +23,23 @@ type CardRow = RatingRow & {
   is_active: number
   bank_id: string
   bank_name: string
+  // Only selected when a caller is known; NULL for a card they do not hold.
+  wallet_status?: VerificationStatus | null
+  wallet_verified_at?: string | null
 }
 
 const CARD_COLUMNS = `c.id, c.name, c.country, c.joining_fee, c.annual_fee, c.is_active,
   c.bank_id, b.name AS bank_name, r.weighted_sum, r.weight_total, r.scored_count`
+
+const WALLET_COLUMNS = `, w.verification_status AS wallet_status, w.verified_at AS wallet_verified_at`
+
+/**
+ * Folds the caller's own wallet state into the same query rather than following
+ * up per card. The user id binds inside the JOIN, so it comes first in the bind
+ * list -- ahead of anything the WHERE clause contributes.
+ */
+const WALLET_JOIN = `
+  LEFT JOIN wallet_cards w ON w.card_id = c.id AND w.user_id = ?`
 
 /**
  * The rating is aggregated in a derived table and joined in, so a page of
@@ -45,7 +59,7 @@ const FROM_CARDS = `FROM cards c
   ) r ON r.card_id = c.id`
 const NOW = "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')"
 
-function toCard(row: CardRow, totalCriteria: number): RatedCard {
+function toCard(row: CardRow, totalCriteria: number, withWallet: boolean): RatedCard {
   return {
     id: row.id,
     name: row.name,
@@ -56,6 +70,17 @@ function toCard(row: CardRow, totalCriteria: number): RatedCard {
     joiningFee: row.joining_fee,
     annualFee: row.annual_fee,
     isActive: row.is_active === 1,
+    // Omitted entirely for anonymous callers: an absent key and a false one say
+    // different things, and the public shape must not gain a field.
+    ...(withWallet
+      ? {
+          wallet: {
+            inWallet: row.wallet_status != null,
+            verificationStatus: row.wallet_status ?? 'unverified',
+            verifiedAt: row.wallet_verified_at ?? null,
+          },
+        }
+      : {}),
     rating: toRating(row, totalCriteria),
   }
 }
@@ -100,38 +125,54 @@ function buildWhere(f: CardFilters): { clause: string; binds: unknown[] } {
   return { clause: conds.length ? `WHERE ${conds.join(' AND ')}` : '', binds }
 }
 
+/**
+ * `userId` turns on the wallet columns. The COUNT deliberately skips the wallet
+ * join: it counts catalog rows, which the caller's holdings cannot change, and
+ * leaving it out keeps the count's bind list independent of the page's.
+ */
 export async function listCards(
   db: D1Database,
   filters: CardFilters,
+  userId?: string,
 ): Promise<{ cards: RatedCard[]; total: number }> {
   const { clause, binds } = buildWhere(filters)
+  const withWallet = userId !== undefined
 
-  // One round trip for the page and its unpaginated total. The join is
-  // many-to-one, so it cannot fan a card out across rows.
+  // One round trip for the page and its unpaginated total. Every join is
+  // many-to-one, so none can fan a card out across rows.
   const [page, count, criteria] = await db.batch<CardRow & { total: number }>([
     db
       .prepare(
-        `SELECT ${CARD_COLUMNS} ${FROM_CARDS} ${clause}
+        `SELECT ${CARD_COLUMNS}${withWallet ? WALLET_COLUMNS : ''} ${FROM_CARDS}${withWallet ? WALLET_JOIN : ''} ${clause}
          ORDER BY b.name COLLATE NOCASE ASC, c.name COLLATE NOCASE ASC LIMIT ? OFFSET ?`,
       )
-      .bind(...binds, filters.limit, filters.offset),
+      .bind(...(withWallet ? [userId] : []), ...binds, filters.limit, filters.offset),
     db.prepare(`SELECT COUNT(*) AS total ${FROM_CARDS} ${clause}`).bind(...binds),
     db.prepare('SELECT COUNT(*) AS total FROM scoring_criteria WHERE is_active = 1'),
   ])
 
   const totalCriteria = criteria.results[0]?.total ?? 0
   return {
-    cards: (page.results as CardRow[]).map((row) => toCard(row, totalCriteria)),
+    cards: (page.results as CardRow[]).map((row) => toCard(row, totalCriteria, withWallet)),
     total: count.results[0]?.total ?? 0,
   }
 }
 
-export async function getCard(db: D1Database, id: string): Promise<RatedCard | null> {
+export async function getCard(
+  db: D1Database,
+  id: string,
+  userId?: string,
+): Promise<RatedCard | null> {
+  const withWallet = userId !== undefined
+
   const row = await db
-    .prepare(`SELECT ${CARD_COLUMNS} ${FROM_CARDS} WHERE c.id = ?`)
-    .bind(id)
+    .prepare(
+      `SELECT ${CARD_COLUMNS}${withWallet ? WALLET_COLUMNS : ''} ${FROM_CARDS}${withWallet ? WALLET_JOIN : ''} WHERE c.id = ?`,
+    )
+    .bind(...(withWallet ? [userId] : []), id)
     .first<CardRow>()
-  return row ? toCard(row, await countActiveCriteria(db)) : null
+
+  return row ? toCard(row, await countActiveCriteria(db), withWallet) : null
 }
 
 async function requireCard(db: D1Database, id: string): Promise<void> {

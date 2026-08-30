@@ -23,6 +23,13 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     env:
       VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+      # Optional, and deliberately absent from the guard below: a missing API
+      # URL breaks the app, a missing Clarity id only means no analytics.
+      VITE_CLARITY_PROJECT_ID: ${{ secrets.VITE_CLARITY_PROJECT_ID }}
+      # Required: ClerkProvider throws without it, so the deployed app would be
+      # a blank screen. Publishable keys are public by design — this one ships
+      # in the bundle either way.
+      VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -41,6 +48,10 @@ jobs:
             echo "VITE_API_BASE_URL must be set in the github-pages Environment."
             exit 1
           fi
+          if [ -z "$VITE_CLERK_PUBLISHABLE_KEY" ]; then
+            echo "VITE_CLERK_PUBLISHABLE_KEY must be set in the github-pages Environment."
+            exit 1
+          fi
           npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
@@ -55,6 +66,8 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       WORKER_SECRET_ADMIN_TOKEN: ${{ secrets.WORKER_SECRET_ADMIN_TOKEN }}
+      WORKER_SECRET_CLERK_WEBHOOK_SIGNING_SECRET: ${{ secrets.WORKER_SECRET_CLERK_WEBHOOK_SIGNING_SECRET }}
+      WORKER_SECRET_CLERK_SECRET_KEY: ${{ secrets.WORKER_SECRET_CLERK_SECRET_KEY }}
     steps:
       # `runner` is not a valid context in job-level `env`, so the path is
       # resolved here instead. First step, so the `if: always()` cleanup below
@@ -73,13 +86,20 @@ jobs:
       - name: Type-check Worker
         working-directory: backend
         run: npm run typecheck
+      # Session auth and stored wallets are the first user data behind this API,
+      # so a deploy that breaks them should not reach production.
+      - name: Test Worker
+        working-directory: backend
+        run: npm test
       - name: Apply pending D1 migrations
         working-directory: backend
         run: npm run migrate:remote
       - name: Create Worker secrets file
         run: >-
           node -e 'const { writeFileSync } = require("node:fs");
-          const secrets = { ADMIN_TOKEN: process.env.WORKER_SECRET_ADMIN_TOKEN };
+          const secrets = { ADMIN_TOKEN: process.env.WORKER_SECRET_ADMIN_TOKEN,
+          CLERK_WEBHOOK_SIGNING_SECRET: process.env.WORKER_SECRET_CLERK_WEBHOOK_SIGNING_SECRET,
+          CLERK_SECRET_KEY: process.env.WORKER_SECRET_CLERK_SECRET_KEY };
           const missing = Object.entries(secrets).filter(([, value]) => !value).map(([name]) => name);
           if (missing.length) throw new Error(`Missing required Worker secrets: ${missing.join(", ")}`);
           writeFileSync(process.env.WORKER_SECRETS_FILE, JSON.stringify(secrets), { mode: 0o600 });'

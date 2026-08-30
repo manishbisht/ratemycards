@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { adminAuth } from '../../http/adminAuth'
+import { optionalUser } from '../../http/clerkAuth'
 import { ApiError, readJsonBody } from '../../http/errors'
 import { parseBool, parseIds, parseLimit, parseNonNegativeInt, parseOffset } from '../../http/params'
 import type { AppEnv } from '../../env'
@@ -15,9 +16,15 @@ export const cardRoutes = new Hono<AppEnv>()
  * Reads are public; every mutation goes through adminAuth. Applying it per
  * route rather than as a path prefix keeps it greppable -- the count of
  * `adminAuth` here must equal the number of write handlers.
+ *
+ * The two catalog reads also take optionalUser, which identifies a caller when
+ * one is present and shrugs otherwise. That is what lets a single route answer
+ * both the public catalog and "which of these do I already hold": anonymous
+ * responses are byte-for-byte what they always were, and a signed-in caller
+ * gets a `wallet` block on each card.
  */
 
-cardRoutes.get('/', async (c) => {
+cardRoutes.get('/', optionalUser, async (c) => {
   const query = c.req.query('q')?.trim()
   const { cards, total } = await listCards(c.env.DB, {
     q: query ? query : undefined,
@@ -28,13 +35,13 @@ cardRoutes.get('/', async (c) => {
     includeInactive: parseBool(c.req.query('includeInactive')),
     limit: parseLimit(c.req.query('limit')),
     offset: parseOffset(c.req.query('offset')),
-  })
+  }, c.get('user')?.id)
   return c.json({ data: cards.map(toPublicCard), total })
 })
 
-cardRoutes.get('/:id', async (c) => {
+cardRoutes.get('/:id', optionalUser, async (c) => {
   const id = c.req.param('id')
-  const card = await getCard(c.env.DB, id)
+  const card = await getCard(c.env.DB, id, c.get('user')?.id)
   if (!card) throw ApiError.notFound(`Card '${id}'`)
   return c.json(toPublicCard(card))
 })

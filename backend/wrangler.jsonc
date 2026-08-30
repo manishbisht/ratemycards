@@ -3,6 +3,8 @@
   "name": "ratemycards-api",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-29",
+  // @clerk/backend reaches for Node built-ins on its way to Web Crypto.
+  "compatibility_flags": ["nodejs_compat"],
   "routes": [
     {
       "pattern": "api-ratemycards.manishbisht.me",
@@ -20,7 +22,12 @@
   // .github/workflows/deploy.yml, which throws before `deploy` is reached.
   // Keep that step if you ever rework this.
   "secrets": {
-    "required": ["ADMIN_TOKEN"]
+    "required": [
+      "ADMIN_TOKEN",
+      "CLERK_WEBHOOK_SIGNING_SECRET",
+      // Fetches Clerk's JWKS, which is what verifies a session token.
+      "CLERK_SECRET_KEY"
+    ]
   },
   "vars": {
     // CORS allowlist: production frontend, Vite dev server, then Vite preview.

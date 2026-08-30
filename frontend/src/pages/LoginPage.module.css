@@ -62,6 +62,14 @@
   flex: none;
 }
 
+.error {
+  margin-top: 14px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-align: center;
+  color: var(--status-failed);
+}
+
 .footnote {
   margin-top: 20px;
   font-size: 12.5px;

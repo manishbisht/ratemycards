@@ -6,6 +6,8 @@
   "permissions": {
     "allow": [
       "Bash(*)",
+      "Skill(clerk-react-patterns)",
+      "Skill(clerk-custom-ui)",
       "WebFetch(domain:api.anthropic.com)"
     ]
   }

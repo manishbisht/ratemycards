@@ -11,6 +11,12 @@ export type WalletState = {
   picked: CardId[]
   vstatus: Record<CardId, VerificationStatus>
   user: User | null
+  /**
+   * Whether the wallet in this browser has been reconciled with the server for
+   * the current session. Guards the merge from running twice, and tells the
+   * write-through listeners that the server is now the one to tell.
+   */
+  synced: boolean
   /** The handle the user has claimed, once they have claimed one. */
   handle: string | null
   /** ISO dates, so the verify note can name a real day. */

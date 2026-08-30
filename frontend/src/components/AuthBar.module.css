@@ -1,0 +1,43 @@
+.bar {
+  position: fixed;
+  top: max(20px, calc(var(--inset-top) + 12px));
+  right: 20px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.link,
+.solid {
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 9px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.link {
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.link:hover {
+  color: var(--text);
+  background: var(--glass);
+}
+
+.solid {
+  color: var(--text);
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+.solid:hover {
+  background: var(--surface-hover);
+}

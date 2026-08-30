@@ -1,5 +1,6 @@
 import { generateId, idPattern } from '../../http/ids'
 import type { Rating } from '../scoring/scoringTypes'
+import type { VerificationStatus } from '../wallet/walletTypes'
 
 export const CARD_ID_PREFIX = 'card'
 export const CARD_ID_PATTERN = idPattern(CARD_ID_PREFIX)
@@ -12,6 +13,17 @@ export function generateCardId(): string {
 export type CardBank = {
   id: string
   name: string
+}
+
+/**
+ * A signed-in caller's own state on a card. Absent entirely for anonymous
+ * callers, so the public response shape is exactly what it always was.
+ */
+export type CardWallet = {
+  inWallet: boolean
+  verificationStatus: VerificationStatus
+  /** ISO date, set only once the card is verified. */
+  verifiedAt: string | null
 }
 
 /**
@@ -30,6 +42,8 @@ export type Card = {
   joiningFee: number
   annualFee: number
   isActive: boolean
+  /** Only present when the request carried a session token. */
+  wallet?: CardWallet
 }
 
 /**

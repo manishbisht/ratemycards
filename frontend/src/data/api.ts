@@ -5,12 +5,35 @@
  */
 
 import type { Card, CardId } from './cards'
+import type { VerificationStatus } from '../state/walletTypes'
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
 
 if (!apiBaseUrl) throw new Error('VITE_API_BASE_URL must be set.')
 
 const BASE_URL = apiBaseUrl.replace(/\/$/, '')
+
+/**
+ * Clerk's `getToken` lives behind a React hook, and this module is plain
+ * functions with no context to read from. Rather than thread a token through
+ * every call site, the app registers a getter once at startup -- see
+ * useApiAuth. Left unset, every request goes out anonymous, which is exactly
+ * what the public catalog wants.
+ */
+let getAuthToken: (() => Promise<string | null>) | null = null
+
+export function setAuthTokenGetter(getter: (() => Promise<string | null>) | null): void {
+  getAuthToken = getter
+}
+
+async function authHeader(): Promise<Record<string, string>> {
+  if (!getAuthToken) return {}
+
+  // A token that cannot be fetched -- expired session, Clerk still loading --
+  // is not fatal: the request proceeds anonymously and the API decides.
+  const token = await getAuthToken().catch(() => null)
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
 
 /** Shape of the API's error envelope. */
 type ErrorBody = { error?: { code?: string; message?: string; details?: string[] } }
@@ -28,11 +51,13 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const auth = await authHeader()
+
   let response: Response
   try {
     response = await fetch(`${BASE_URL}${path}`, {
       ...init,
-      headers: { 'Content-Type': 'application/json', ...init?.headers },
+      headers: { 'Content-Type': 'application/json', ...auth, ...init?.headers },
     })
   } catch (err) {
     // A cancelled request is not a failure -- it means a newer one superseded
@@ -52,10 +77,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     )
   }
 
+  // 204 carries no body, and response.json() would throw on the empty one.
+  // The callers that see this return void.
+  if (response.status === 204) return undefined as T
+
   return (await response.json()) as T
 }
 
 /* ------------------------------------------------------------------ cards */
+
+/** Present only when the request carried a session token. */
+type ApiCardWallet = {
+  inWallet: boolean
+  verificationStatus: VerificationStatus
+  verifiedAt: string | null
+}
 
 type ApiCard = {
   id: string
@@ -66,6 +102,7 @@ type ApiCard = {
   joiningFee: number
   annualFee: number
   isActive: boolean
+  wallet?: ApiCardWallet
 }
 
 /**
@@ -132,4 +169,81 @@ export const EMPTY_SCORE: WalletScore = {
   tier: { min: 0, name: 'Beginner', color: '#34D399' },
   cardCount: 0,
   unknownIds: [],
+}
+
+/* --------------------------------------------------------- stored wallets */
+
+/**
+ * A card in the signed-in wallet, as the API returns it: the card itself plus
+ * this holder's state on it. Anonymous visitors never see these -- their wallet
+ * is still just a list of ids in this browser.
+ */
+export type WalletCard = {
+  card: Card
+  verificationStatus: VerificationStatus
+  verifiedAt: string | null
+}
+
+export type StoredWallet = {
+  cards: WalletCard[]
+  score: WalletScore
+}
+
+type ApiWalletCard = {
+  card: ApiCard
+  verificationStatus: VerificationStatus
+  verifiedAt: string | null
+}
+
+type ApiStoredWallet = { cards: ApiWalletCard[]; score: WalletScore }
+
+function toStoredWallet(body: ApiStoredWallet): StoredWallet {
+  return {
+    cards: body.cards.map((entry) => ({
+      card: toCard(entry.card),
+      verificationStatus: entry.verificationStatus,
+      verifiedAt: entry.verifiedAt,
+    })),
+    score: body.score,
+  }
+}
+
+export async function fetchWallet(signal?: AbortSignal): Promise<StoredWallet> {
+  return toStoredWallet(await request<ApiStoredWallet>('/v1/wallet', { signal }))
+}
+
+/**
+ * Folds this browser's picks into the account's wallet at sign-in. The server
+ * unions rather than overwrites, so a card already held keeps the verification
+ * it earned on whatever device earned it.
+ */
+export async function mergeWallet(cardIds: CardId[]): Promise<StoredWallet> {
+  return toStoredWallet(
+    await request<ApiStoredWallet>('/v1/wallet/merge', {
+      method: 'POST',
+      body: JSON.stringify({ cardIds }),
+    }),
+  )
+}
+
+export async function addWalletCard(cardId: CardId): Promise<StoredWallet> {
+  return toStoredWallet(
+    await request<ApiStoredWallet>(`/v1/wallet/cards/${cardId}`, { method: 'PUT' }),
+  )
+}
+
+export function removeWalletCard(cardId: CardId): Promise<void> {
+  return request<void>(`/v1/wallet/cards/${cardId}`, { method: 'DELETE' })
+}
+
+export async function setWalletCardStatus(
+  cardId: CardId,
+  status: VerificationStatus,
+): Promise<StoredWallet> {
+  return toStoredWallet(
+    await request<ApiStoredWallet>(`/v1/wallet/cards/${cardId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+  )
 }

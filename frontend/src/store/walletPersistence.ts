@@ -1,7 +1,13 @@
 import { isCardId } from '../data/cards'
 import type { WalletState } from '../state/walletTypes'
 
-export const STORAGE_KEY = 'ratemycards.wallet.v2'
+/**
+ * Bumped from v2 when wallets became server-owned. A v2 blob could name cards
+ * belonging to whoever last used this browser, and sign-out now clears the
+ * wallet precisely so one account's cards cannot follow another's session --
+ * reading the old key would reopen that.
+ */
+export const STORAGE_KEY = 'ratemycards.wallet.v3'
 
 export const initialWalletState: WalletState = {
   picked: [],
@@ -9,6 +15,7 @@ export const initialWalletState: WalletState = {
   user: null,
   handle: null,
   verifiedAt: {},
+  synced: false,
 }
 
 export function loadWalletState(): WalletState {
@@ -23,6 +30,9 @@ export function loadWalletState(): WalletState {
       picked: Array.isArray(parsed?.picked) ? parsed.picked.filter(isCardId) : [],
       vstatus: parsed?.vstatus ?? {},
       verifiedAt: parsed?.verifiedAt ?? {},
+      // Never restored: a reload starts a fresh session that has not talked to
+      // the server yet, whatever the last one managed to persist.
+      synced: false,
     }
   } catch {
     return initialWalletState

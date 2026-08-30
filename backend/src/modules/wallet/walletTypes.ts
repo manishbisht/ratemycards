@@ -1,4 +1,4 @@
-import type { RatedCard } from '../cards/cardTypes'
+import type { Card, RatedCard } from '../cards/cardTypes'
 
 /**
  * Wallet scoring: how a set of cards becomes one rating on the 0-3000 ladder.
@@ -79,4 +79,37 @@ export function scoreWallet(cards: RatedCard[], requestedIds: string[]): WalletS
     cardCount: cards.length,
     unknownIds: requestedIds.filter((id) => !found.has(id)),
   }
+}
+
+/**
+ * How far along a card's ₹1-authorisation check is. Mirrors VerificationStatus
+ * in the frontend's state/walletTypes.ts and the CHECK constraint in
+ * 0008_create_wallet_cards.sql -- change one, change all three.
+ */
+export const VERIFICATION_STATUSES = ['unverified', 'pending', 'verified', 'failed'] as const
+
+export type VerificationStatus = (typeof VERIFICATION_STATUSES)[number]
+
+export function isVerificationStatus(value: unknown): value is VerificationStatus {
+  return (
+    typeof value === 'string' &&
+    (VERIFICATION_STATUSES as readonly string[]).includes(value)
+  )
+}
+
+/** One card in a stored wallet: the public card plus this holder's state on it. */
+export type WalletCard = {
+  card: Card
+  verificationStatus: VerificationStatus
+  /** ISO date, set only once the card is verified. */
+  verifiedAt: string | null
+}
+
+/**
+ * A stored wallet. The score is the same aggregate /preview returns, computed
+ * over the held cards so a client never has to ask twice.
+ */
+export type StoredWallet = {
+  cards: WalletCard[]
+  score: WalletScore
 }
