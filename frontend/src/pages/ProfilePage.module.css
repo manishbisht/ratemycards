@@ -1,0 +1,140 @@
+.content {
+  padding: max(60px, calc(var(--inset-top) + 22px)) 22px calc(34px + var(--inset-bottom));
+}
+
+.eyebrow {
+  text-align: center;
+  font-size: 12px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.35);
+  flex: none;
+}
+
+.panel {
+  margin-top: 26px;
+  padding: 30px 24px 26px;
+  border-radius: var(--radius-screen-panel);
+  background: var(--glass);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 28px 64px rgba(0, 0, 0, 0.55);
+  text-align: center;
+  flex: none;
+}
+
+.handle {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  word-break: break-all;
+}
+
+.score {
+  margin-top: 16px;
+  font-size: 82px;
+  line-height: 0.92;
+  font-weight: 600;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+}
+
+.pills {
+  margin-top: 14px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.verifiedPill {
+  display: inline-block;
+  padding: 6px 13px;
+  border-radius: 999px;
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--status-verified);
+  white-space: nowrap;
+}
+
+.summary {
+  margin-top: 20px;
+  font-size: 16px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.85);
+  text-wrap: pretty;
+}
+
+.deck {
+  margin-top: 26px;
+}
+
+.footer {
+  margin-top: auto;
+  padding-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: none;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+}
+
+.ownLink {
+  margin-top: 6px;
+  padding: 4px;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Empty-handle state */
+.missing {
+  padding: max(60px, calc(var(--inset-top) + 22px)) 22px calc(34px + var(--inset-bottom));
+}
+
+.missingBody {
+  margin-top: auto;
+  margin-bottom: auto;
+  text-align: center;
+}
+
+.missingTitle {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.14;
+}
+
+.missingBlurb {
+  margin-top: 14px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.missingHandle {
+  color: var(--accent);
+  font-weight: 500;
+  word-break: break-all;
+}
+
+@media (max-height: 760px) {
+  .score {
+    font-size: 68px;
+  }
+}

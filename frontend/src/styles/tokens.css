@@ -1,0 +1,50 @@
+/* Ported verbatim from the Claude Design source, `Rate My Cards.dc.html`.
+   The product is dark-only by design, so there is no light branch here. */
+:root {
+  color-scheme: dark;
+
+  --bg: #0a0a0f;
+  --surface: #15151d;
+  --surface-hover: #1b1b25;
+  --surface-panel: #12121a;
+
+  --glass: rgba(255, 255, 255, 0.07);
+  --glass-border: rgba(255, 255, 255, 0.16);
+  --glass-blur: 34px;
+
+  --hairline: rgba(255, 255, 255, 0.06);
+  --border-soft: rgba(255, 255, 255, 0.08);
+  --border-field: rgba(255, 255, 255, 0.11);
+  --divider: rgba(255, 255, 255, 0.12);
+
+  --text: #fff;
+  --text-secondary: rgba(255, 255, 255, 0.62);
+  --text-tertiary: rgba(255, 255, 255, 0.45);
+  --text-quaternary: rgba(255, 255, 255, 0.38);
+  --text-muted: rgba(255, 255, 255, 0.4);
+  --text-label: rgba(255, 255, 255, 0.42);
+
+  --status-unverified: rgba(255, 255, 255, 0.4);
+  --status-pending: #22d3ee;
+  --status-verified: #34d399;
+  --status-failed: #f87171;
+
+  --accent: #fb923c;
+  --whatsapp: #25d366;
+  --whatsapp-ink: #062b14;
+
+  --radius-screen-panel: 32px;
+  --radius-card: 20px;
+  --radius-row: 14px;
+  --radius-field: 16px;
+
+  --shadow-panel: 0 30px 70px rgba(0, 0, 0, 0.55);
+  --shadow-bar: 0 18px 40px rgba(0, 0, 0, 0.5);
+  --shadow-tile: -10px 14px 26px rgba(0, 0, 0, 0.45);
+
+  --font: 'Outfit', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Safe-area shorthands so screens can add insets on top of design padding. */
+  --inset-top: env(safe-area-inset-top, 0px);
+  --inset-bottom: env(safe-area-inset-bottom, 0px);
+}

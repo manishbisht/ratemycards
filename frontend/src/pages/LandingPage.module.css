@@ -1,0 +1,95 @@
+.content {
+  padding: max(64px, calc(var(--inset-top) + 24px)) 28px calc(44px + var(--inset-bottom));
+}
+
+.wordmark {
+  font-size: 12px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.bottom {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.stackWrap {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  height: 180px;
+}
+
+.stack {
+  position: relative;
+  width: 200px;
+  height: 130px;
+}
+
+.cardBack,
+.cardMid,
+.cardFront {
+  position: absolute;
+  width: 190px;
+  height: 118px;
+  border-radius: 18px;
+}
+
+.cardBack {
+  left: 0;
+  top: 26px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  transform: rotate(-14deg);
+}
+
+.cardMid {
+  left: 6px;
+  top: 14px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  transform: rotate(-6deg);
+}
+
+.cardFront {
+  left: 10px;
+  top: 0;
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06));
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+}
+
+.title {
+  font-size: 44px;
+  line-height: 1.05;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  text-wrap: pretty;
+}
+
+.blurb {
+  font-size: 17px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  max-width: 300px;
+  text-wrap: pretty;
+}
+
+.cta {
+  margin-top: 8px;
+  font-size: 17px;
+}
+
+/* Short viewports: shrink the illustration before the copy. */
+@media (max-height: 700px) {
+  .stackWrap {
+    height: 120px;
+  }
+
+  .title {
+    font-size: 36px;
+  }
+}

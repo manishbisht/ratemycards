@@ -1,0 +1,37 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "ratemycards-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-29",
+  "routes": [
+    {
+      "pattern": "api-ratemycards.manishbisht.me",
+      "custom_domain": true
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+
+  // Validated at deploy time: `wrangler deploy` fails if ADMIN_TOKEN is unset,
+  // so a deployment can never come up with writes unguarded.
+  "secrets": {
+    "required": ["ADMIN_TOKEN"]
+  },
+  "vars": {
+    // CORS allowlist: production frontend, Vite dev server, then Vite preview.
+    "ALLOWED_ORIGINS": "https://ratemycards.manishbisht.me,http://localhost:5173,http://localhost:4173"
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ratemycards",
+      // Placeholder until `npm run db:create` is run against a real Cloudflare
+      // account. Local dev and tests ignore this value; `--remote` needs it real.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

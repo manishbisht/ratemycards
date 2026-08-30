@@ -1,0 +1,93 @@
+.content {
+  align-items: center;
+  padding: max(70px, calc(var(--inset-top) + 26px)) 22px calc(40px + var(--inset-bottom));
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  padding: 34px 24px 30px;
+  border-radius: var(--radius-screen-panel);
+  background: var(--glass);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-panel);
+  flex: none;
+}
+
+.score {
+  margin-top: 18px;
+  font-size: 104px;
+  line-height: 0.92;
+  font-weight: 600;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+}
+
+.outOf {
+  margin-top: 8px;
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-label);
+}
+
+.divider {
+  margin-top: 24px;
+  width: 100%;
+  height: 1px;
+  background: var(--divider);
+}
+
+.summary {
+  margin-top: 22px;
+  font-size: 17px;
+  line-height: 1.45;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.85);
+  text-wrap: pretty;
+}
+
+.deck {
+  margin-top: 38px;
+}
+
+.caption {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-label);
+  flex: none;
+}
+
+.tick {
+  color: var(--status-verified);
+}
+
+.footer {
+  margin-top: auto;
+  padding-top: 20px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: none;
+}
+
+.footnote {
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--text-tertiary);
+}
+
+/* The deck is the first thing to give up room on a short screen. */
+@media (max-height: 760px) {
+  .score {
+    font-size: 84px;
+  }
+}

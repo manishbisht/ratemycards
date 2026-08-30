@@ -1,0 +1,140 @@
+.content {
+  padding: max(64px, calc(var(--inset-top) + 24px)) 20px calc(30px + var(--inset-bottom));
+}
+
+.title {
+  margin: 0 4px;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.14;
+}
+
+.blurb {
+  margin: 12px 4px 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.58);
+  text-wrap: pretty;
+}
+
+.rows {
+  margin-top: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.empty {
+  padding: 18px 16px;
+  border-radius: var(--radius-field);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+
+.row {
+  padding: 14px 16px;
+  border-radius: var(--radius-field);
+  background: var(--surface);
+  border: 1px solid;
+  flex: none;
+}
+
+.rowMain {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.rowText {
+  flex: 1;
+  min-width: 0;
+}
+
+.rowName {
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rowStatus {
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.action {
+  flex: none;
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.action:disabled {
+  cursor: default;
+}
+
+.note {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(10, 10, 15, 0.6);
+  border: 1px solid var(--border-soft);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.footer {
+  margin-top: auto;
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: none;
+}
+
+.summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-radius: 20px;
+  background: var(--surface-panel);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.summaryLine {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+
+.summaryScore {
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.footnote {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-quaternary);
+}

@@ -1,0 +1,29 @@
+{
+  "name": "ratemycards-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "wrangler types && tsc --noEmit",
+    "typegen": "wrangler types",
+    "db:create": "wrangler d1 create ratemycards --binding DB",
+    "migrate:local": "wrangler d1 migrations apply ratemycards --local",
+    "migrate:remote": "wrangler d1 migrations apply ratemycards --remote",
+    "secret:admin": "wrangler secret put ADMIN_TOKEN"
+  },
+  "dependencies": {
+    "hono": "^4.13.5"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.1.2",
+    "typescript": "~6.0.2",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.127.1"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

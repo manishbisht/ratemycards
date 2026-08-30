@@ -1,0 +1,68 @@
+.button {
+  border: none;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 120ms ease, background-color 120ms ease;
+}
+
+.button:disabled {
+  cursor: default;
+}
+
+.button:active:not(:disabled) {
+  opacity: 0.82;
+}
+
+.primary {
+  width: 100%;
+  padding: 19px;
+  border-radius: 20px;
+  background: #fff;
+  color: var(--bg);
+  font-size: 16.5px;
+  letter-spacing: -0.01em;
+}
+
+.primary:disabled {
+  background: rgba(255, 255, 255, 0.22);
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.compact {
+  padding: 13px 22px;
+  border-radius: 14px;
+  background: #fff;
+  color: var(--bg);
+  font-size: 15px;
+}
+
+.compact:disabled {
+  background: rgba(255, 255, 255, 0.22);
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.whatsapp {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 17px;
+  border-radius: 18px;
+  background: var(--whatsapp);
+  color: var(--whatsapp-ink);
+  font-size: 16px;
+}
+
+.secondary {
+  flex: 1;
+  padding: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14.5px;
+  font-weight: 500;
+}

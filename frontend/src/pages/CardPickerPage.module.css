@@ -1,0 +1,153 @@
+.content {
+  padding: max(58px, calc(var(--inset-top) + 20px)) 20px 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 4px 20px;
+}
+
+.back {
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.heading {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  height: 52px;
+  flex: none;
+  border-radius: var(--radius-field);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--border-field);
+}
+
+.searchIcon {
+  font-size: 15px;
+  color: var(--text-muted);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+.results {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.empty {
+  padding: 18px 16px;
+  border-radius: var(--radius-row);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  font-size: 14px;
+  color: var(--text-tertiary);
+}
+
+.footer {
+  margin-top: auto;
+  padding-bottom: calc(22px + var(--inset-bottom));
+  flex: none;
+}
+
+.bar {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-radius: 22px;
+  background: rgba(18, 18, 26, 0.72);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--divider);
+  box-shadow: var(--shadow-bar);
+}
+
+.barLabel {
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--text-label);
+}
+
+.barScoreRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.barScore {
+  font-size: 34px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.barTier {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.barLine {
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+/* Retry affordance on the results list when the catalog request fails. */
+.retry {
+  margin-top: 10px;
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.retry:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* A card's own 0-10 rating, shown while browsing. */
+.cardRating {
+  font-variant-numeric: tabular-nums;
+}
