@@ -14,8 +14,11 @@
     "head_sampling_rate": 1
   },
 
-  // Validated at deploy time: `wrangler deploy` fails if ADMIN_TOKEN is unset,
-  // so a deployment can never come up with writes unguarded.
+  // Drives type generation and *warns* on a missing secret in local dev -- it
+  // does not fail a deploy. What actually keeps a deployment from coming up
+  // with writes unguarded is the "Create Worker secrets file" step in
+  // .github/workflows/deploy.yml, which throws before `deploy` is reached.
+  // Keep that step if you ever rework this.
   "secrets": {
     "required": ["ADMIN_TOKEN"]
   },
@@ -28,9 +31,9 @@
     {
       "binding": "DB",
       "database_name": "ratemycards",
-      // Placeholder until `npm run db:create` is run against a real Cloudflare
-      // account. Local dev and tests ignore this value; `--remote` needs it real.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      // Local dev and tests ignore this value -- Miniflare keys off the binding
+      // -- so only `--remote` (and therefore CI) dereferences it.
+      "database_id": "91e9ca3f-d61a-47d2-b9cd-73989ebb4f10",
       "migrations_dir": "migrations"
     }
   ]
