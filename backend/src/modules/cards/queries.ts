@@ -27,7 +27,7 @@ type CardRow = RatingRow & {
   id: string
   name: string
   country: string
-  type: string
+  type: CardType
   joining_fee: number
   annual_fee: number
   is_active: number
@@ -80,7 +80,7 @@ function toCard(row: CardRow, totalCriteria: number, withWallet: boolean): Rated
     // Not a column: the bank's name, under the field the frontend renders.
     issuer: row.bank_name,
     country: row.country,
-    type: row.type as CardType,
+    type: row.type,
     joiningFee: row.joining_fee,
     annualFee: row.annual_fee,
     isActive: row.is_active === 1,
