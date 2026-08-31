@@ -218,6 +218,171 @@ describe('PATCH /v1/cards/:id', () => {
   })
 })
 
+/**
+ * The write path still owns card_networks, but the card it returns says nothing
+ * about them -- so these read the table back rather than the response body.
+ */
+describe('card networks on write', () => {
+  /** The network codes the table holds for a card, sorted. */
+  async function networksOf(cardId: string): Promise<string[]> {
+    const { results } = await env.DB.prepare(
+      `SELECT nw.code AS network
+       FROM card_networks cn
+       JOIN networks nw ON nw.id = cn.network_id
+       WHERE cn.card_id = ?
+       ORDER BY nw.code`,
+    )
+      .bind(cardId)
+      .all()
+    return results.map((row: any) => row.network)
+  }
+
+  it('keeps networks off the created card', async () => {
+    const body = await json(await send('POST', '/v1/cards', card({ networks: ['visa'] })))
+    expect(body).not.toHaveProperty('networks')
+  })
+
+  it('writes nothing when no network is given', async () => {
+    const body = await json(await send('POST', '/v1/cards', card()))
+    expect(await networksOf(body.id)).toEqual([])
+  })
+
+  it('stores the networks a card is created with', async () => {
+    const body = await json(
+      await send('POST', '/v1/cards', card({ networks: ['visa', 'mastercard'] })),
+    )
+    expect(await networksOf(body.id)).toEqual(['mastercard', 'visa'])
+  })
+
+  it('rejects an unknown network', async () => {
+    const res = await send('POST', '/v1/cards', card({ networks: ['switch'] }))
+    expect(res.status).toBe(400)
+    expect((await json(res)).error.details[0]).toMatch(/networks must contain only/)
+  })
+
+  it('rejects an empty network set', async () => {
+    const res = await send('POST', '/v1/cards', card({ networks: [] }))
+    expect(res.status).toBe(400)
+    expect((await json(res)).error.details[0]).toMatch(/non-empty/)
+  })
+
+  it('rejects a repeated network', async () => {
+    const res = await send('POST', '/v1/cards', card({ networks: ['visa', 'visa'] }))
+    expect(res.status).toBe(400)
+    expect((await json(res)).error.details[0]).toMatch(/must not repeat/)
+  })
+
+  it('rejects a network that is not a string', async () => {
+    const res = await send('POST', '/v1/cards', card({ networks: [4] }))
+    expect(res.status).toBe(400)
+  })
+
+  it('replaces rather than merges on patch', async () => {
+    const created = await json(await send('POST', '/v1/cards', card({ networks: ['visa'] })))
+
+    await send('PATCH', `/v1/cards/${created.id}`, { networks: ['rupay'] })
+    expect(await networksOf(created.id)).toEqual(['rupay'])
+  })
+
+  it('is idempotent: patching the same set twice changes nothing', async () => {
+    const created = await json(
+      await send('POST', '/v1/cards', card({ networks: ['visa', 'amex'] })),
+    )
+
+    await send('PATCH', `/v1/cards/${created.id}`, { networks: ['visa', 'amex'] })
+    await send('PATCH', `/v1/cards/${created.id}`, { networks: ['visa', 'amex'] })
+    expect(await networksOf(created.id)).toEqual(['amex', 'visa'])
+  })
+
+  it('accepts a networks-only patch', async () => {
+    const created = await json(await send('POST', '/v1/cards', card()))
+    const res = await send('PATCH', `/v1/cards/${created.id}`, { networks: ['diners'] })
+
+    expect(res.status).toBe(200)
+    expect(await networksOf(created.id)).toEqual(['diners'])
+  })
+
+  it('keeps the other fields when only networks change', async () => {
+    const created = await json(
+      await send('POST', '/v1/cards', card({ joiningFee: 500, annualFee: 750 })),
+    )
+    const patched = await json(
+      await send('PATCH', `/v1/cards/${created.id}`, { networks: ['visa'] }),
+    )
+    expect(patched.name).toBe(created.name)
+    expect(patched.joiningFee).toBe(500)
+    expect(patched.annualFee).toBe(750)
+  })
+
+  /**
+   * The composite foreign key in 0009. Dropping a network out from under its
+   * BIN prefixes has to fail loudly rather than take the prefixes with it.
+   */
+  it('refuses to drop a network that still has BIN prefixes', async () => {
+    const created = await json(await send('POST', '/v1/cards', card({ networks: ['visa'] })))
+    await env.DB.prepare(
+      `INSERT INTO card_bins (card_id, network_id, bin_prefix)
+       SELECT ?, id, ? FROM networks WHERE code = ?`,
+    )
+      .bind(created.id, '412345', 'visa')
+      .run()
+
+    const res = await send('PATCH', `/v1/cards/${created.id}`, { networks: ['rupay'] })
+    expect(res.status).toBe(409)
+    expect((await json(res)).error.message).toMatch(/BIN prefixes are still on file/)
+    // The prefixes, and the network they hang off, both survived the refusal.
+    expect(await networksOf(created.id)).toEqual(['visa'])
+  })
+
+  it('lets the database reject a BIN whose digits are not numeric', async () => {
+    const created = await json(await send('POST', '/v1/cards', card({ networks: ['visa'] })))
+    await expect(
+      env.DB.prepare(
+        `INSERT INTO card_bins (card_id, network_id, bin_prefix)
+         SELECT ?, id, ? FROM networks WHERE code = ?`,
+      )
+        .bind(created.id, '51234x', 'visa')
+        .run(),
+    ).rejects.toThrow(/CHECK constraint failed/)
+  })
+
+  /**
+   * What the planned GET /v1/cards/:id/bins has to answer: every prefix for a
+   * card, flattened across all of its networks.
+   */
+  it('can flatten every prefix across a card\'s networks', async () => {
+    const created = await json(
+      await send('POST', '/v1/cards', card({ networks: ['visa', 'mastercard', 'rupay'] })),
+    )
+    for (const [network, prefix] of [
+      ['visa', '412345'],
+      ['visa', '498765'],
+      ['mastercard', '521234'],
+      ['rupay', '652345'],
+    ]) {
+      await env.DB.prepare(
+        `INSERT INTO card_bins (card_id, network_id, bin_prefix)
+         SELECT ?, id, ? FROM networks WHERE code = ?`,
+      )
+        .bind(created.id, prefix, network)
+        .run()
+    }
+
+    const { results } = await env.DB.prepare(
+      'SELECT bin_prefix FROM card_bins WHERE card_id = ? ORDER BY bin_prefix',
+    )
+      .bind(created.id)
+      .all()
+
+    expect(results.map((row: any) => row.bin_prefix)).toEqual([
+      '412345',
+      '498765',
+      '521234',
+      '652345',
+    ])
+  })
+})
+
 describe('PATCH /v1/banks/:id', () => {
   it('renames a bank, and its cards report the new name', async () => {
     const renameBankId = (await json(await send('POST', '/v1/banks', { name: 'Before Rename' }))).id

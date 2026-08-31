@@ -288,6 +288,162 @@ describe('routing', () => {
   })
 })
 
+/**
+ * Networks and BINs are tracked but deliberately not published on the card, so
+ * these assert against the tables rather than a response body. The one thing
+ * asserted over HTTP is that the card payload still says nothing about them.
+ */
+describe('card networks are tracked but not published', () => {
+  it('keeps networks and bins off the card payload', async () => {
+    const { body } = await get('/v1/cards?limit=1')
+    expect(body.data[0]).not.toHaveProperty('networks')
+    expect(body.data[0]).not.toHaveProperty('bins')
+    expect(JSON.stringify(body)).not.toMatch(/bin/i)
+  })
+
+  it('keeps them off a single-card read too', async () => {
+    const infinia = await cardNamed('Infinia Metal')
+    const { body } = await get(`/v1/cards/${infinia.id}`)
+    expect(body).not.toHaveProperty('networks')
+    expect(body.name).toBe('Infinia Metal')
+  })
+
+  it('gives every seeded card at least one network', async () => {
+    const { results } = await env.DB.prepare(
+      `SELECT c.name FROM cards c
+       WHERE NOT EXISTS (SELECT 1 FROM card_networks n WHERE n.card_id = c.id)`,
+    ).all()
+    expect(results.map((row: any) => row.name)).toEqual([])
+  })
+
+  it('names only networks the catalog actually uses', async () => {
+    const { results } = await env.DB.prepare(
+      `SELECT DISTINCT nw.code AS network
+       FROM card_networks cn
+       JOIN networks nw ON nw.id = cn.network_id
+       ORDER BY nw.code`,
+    ).all()
+    expect(results.map((row: any) => row.network)).toEqual([
+      'amex',
+      'diners',
+      'mastercard',
+      'rupay',
+      'visa',
+    ])
+  })
+
+  it('holds the real Visa Infinite prefixes for Infinia', async () => {
+    const { results } = await env.DB.prepare(
+      `SELECT nw.code AS network, cb.bin_prefix FROM card_bins cb
+       JOIN cards c ON c.id = cb.card_id
+       JOIN networks nw ON nw.id = cb.network_id
+       WHERE c.name = 'Infinia Metal' ORDER BY cb.bin_prefix`,
+    ).all()
+    expect(results).toEqual([
+      { network: 'visa', bin_prefix: '417410' },
+      { network: 'visa', bin_prefix: '436152' },
+      { network: 'visa', bin_prefix: '437546' },
+    ])
+  })
+
+  it('records both variants of a card sold on two networks', async () => {
+    const { results } = await env.DB.prepare(
+      `SELECT nw.code AS network FROM card_networks cn
+       JOIN cards c ON c.id = cn.card_id
+       JOIN networks nw ON nw.id = cn.network_id
+       WHERE c.name = 'Emeralde Private Metal' ORDER BY nw.code`,
+    ).all()
+    expect(results.map((row: any) => row.network)).toEqual(['mastercard', 'visa'])
+  })
+
+  it('stores no bins for a card whose tier block is too wide to mean anything', async () => {
+    // Amex India is one block of 117 prefixes shared by the whole portfolio.
+    const { results } = await env.DB.prepare(
+      `SELECT cb.bin_prefix FROM card_bins cb
+       JOIN cards c ON c.id = cb.card_id
+       WHERE c.name = 'Platinum Charge Card'`,
+    ).all()
+    expect(results).toEqual([])
+  })
+
+  it('stores only 6- or 8-digit numeric prefixes', async () => {
+    const { results } = await env.DB.prepare(
+      `SELECT bin_prefix FROM card_bins
+       WHERE length(bin_prefix) NOT IN (6, 8) OR bin_prefix GLOB '*[^0-9]*'`,
+    ).all()
+    expect(results).toEqual([])
+  })
+
+  /**
+   * The reason the networks read path was removed rather than joined in: a card
+   * has many networks and a network many BINs, so any join would fan one card
+   * across rows and corrupt both the page size and the total. These are the
+   * numbers that would move if that ever came back.
+   */
+  it('does not fan a card out across rows', async () => {
+    const { body } = await get(`/v1/cards?limit=${SEEDED_CARDS}`)
+    expect(body.data).toHaveLength(SEEDED_CARDS)
+    expect(body.total).toBe(SEEDED_CARDS)
+    expect(new Set(body.data.map((card: any) => card.id)).size).toBe(SEEDED_CARDS)
+  })
+})
+
+describe('?network= filter', () => {
+  /** Ids of the cards the tables say are on this network. */
+  async function idsOnNetwork(network: string) {
+    const { results } = await env.DB.prepare(
+      `SELECT cn.card_id FROM card_networks cn
+       JOIN networks nw ON nw.id = cn.network_id
+       WHERE nw.code = ?`,
+    )
+      .bind(network)
+      .all()
+    return new Set(results.map((row: any) => row.card_id))
+  }
+
+  it('returns exactly the cards the tables put on that network', async () => {
+    const { body } = await get(`/v1/cards?network=rupay&limit=${SEEDED_CARDS}`)
+    const expected = await idsOnNetwork('rupay')
+
+    expect(expected.size).toBeGreaterThan(0)
+    expect(new Set(body.data.map((card: any) => card.id))).toEqual(expected)
+  })
+
+  it('agrees with its own total', async () => {
+    const { body } = await get(`/v1/cards?network=visa&limit=${SEEDED_CARDS}`)
+    expect(body.total).toBe(body.data.length)
+  })
+
+  it('splits the catalog across networks without losing or duplicating cards', async () => {
+    const perNetwork = await Promise.all(
+      ['visa', 'mastercard', 'amex', 'diners', 'rupay'].map(async (n) =>
+        (await get(`/v1/cards?network=${n}&limit=${SEEDED_CARDS}`)).body.data.map(
+          (card: any) => card.id,
+        ),
+      ),
+    )
+    // Cards sold on two networks appear twice across the five lists, so the
+    // union -- not the sum -- is the whole catalog.
+    expect(new Set(perNetwork.flat()).size).toBe(SEEDED_CARDS)
+  })
+
+  it('is case insensitive on the way in', async () => {
+    const upper = await get(`/v1/cards?network=VISA&limit=${SEEDED_CARDS}`)
+    const lower = await get(`/v1/cards?network=visa&limit=${SEEDED_CARDS}`)
+    expect(upper.body.total).toBe(lower.body.total)
+  })
+
+  it('returns nothing for a network no card is on', async () => {
+    expect((await get('/v1/cards?network=jcb')).body.total).toBe(0)
+  })
+
+  it('ignores an unknown network rather than erroring', async () => {
+    const { res, body } = await get('/v1/cards?network=notanetwork')
+    expect(res.status).toBe(200)
+    expect(body.total).toBe(0)
+  })
+})
+
 describe('query layer directly', () => {
   it('issues no query for an empty id list', async () => {
     // SQLite rejects `IN ()`; the guard must short-circuit before the SQL.

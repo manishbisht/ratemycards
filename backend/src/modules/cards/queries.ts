@@ -1,14 +1,22 @@
 import { ApiError } from '../../http/errors'
 import { likePattern } from '../../http/params'
-import { countActiveCriteria } from '../scoring/queries'
+import { COUNT_ACTIVE_CRITERIA_SQL, countActiveCriteria } from '../scoring/queries'
 import { toRating } from '../scoring/scoringTypes'
 import type { RatingRow } from '../scoring/scoringTypes'
 import { generateCardId } from './cardTypes'
-import type { CardFilters, CardInput, CardPatch, RatedCard } from './cardTypes'
+import type {
+  CardFilters,
+  CardInput,
+  CardNetwork,
+  CardPatch,
+  NetworkCode,
+  RatedCard,
+} from './cardTypes'
 import type { VerificationStatus } from '../wallet/walletTypes'
 
 /**
- * This module owns the `cards` table. It *reads* `banks`, the scoring tables
+ * This module owns the `cards`, `card_networks` and `card_bins` tables. It
+ * *reads* `banks`, the scoring tables
  * and -- for a signed-in caller -- `wallet_cards`, which is the one documented
  * exception to modules keeping to their own tables. It never writes to any of
  * them.
@@ -58,6 +66,9 @@ const FROM_CARDS = `FROM cards c
     GROUP BY s.card_id
   ) r ON r.card_id = c.id`
 const NOW = "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')"
+
+/** Kept out of the page query's template so the ORDER BY has one home. */
+const PAGE_ORDER = 'ORDER BY b.name COLLATE NOCASE ASC, c.name COLLATE NOCASE ASC'
 
 function toCard(row: CardRow, totalCriteria: number, withWallet: boolean): RatedCard {
   return {
@@ -117,6 +128,16 @@ function buildWhere(f: CardFilters): { clause: string; binds: unknown[] } {
     conds.push('c.annual_fee <= ?')
     binds.push(f.maxAnnualFee)
   }
+  if (f.network) {
+    // EXISTS rather than a join: a card on two networks must still count once.
+    // The filter takes a code, not an id -- ids never leave the server.
+    conds.push(
+      `EXISTS (SELECT 1 FROM card_networks cn
+               JOIN networks nw ON nw.id = cn.network_id
+               WHERE cn.card_id = c.id AND nw.code = ?)`,
+    )
+    binds.push(f.network)
+  }
   if (f.ids) {
     conds.push(`c.id IN (${placeholders(f.ids.length)})`)
     binds.push(...f.ids)
@@ -140,15 +161,19 @@ export async function listCards(
 
   // One round trip for the page and its unpaginated total. Every join is
   // many-to-one, so none can fan a card out across rows.
+  //
+  // A card's networks are deliberately NOT fetched here. They are one-to-many
+  // and would fan a card across rows; more to the point the public card does
+  // not carry them -- see the note on card_networks in the README.
   const [page, count, criteria] = await db.batch<CardRow & { total: number }>([
     db
       .prepare(
         `SELECT ${CARD_COLUMNS}${withWallet ? WALLET_COLUMNS : ''} ${FROM_CARDS}${withWallet ? WALLET_JOIN : ''} ${clause}
-         ORDER BY b.name COLLATE NOCASE ASC, c.name COLLATE NOCASE ASC LIMIT ? OFFSET ?`,
+         ${PAGE_ORDER} LIMIT ? OFFSET ?`,
       )
       .bind(...(withWallet ? [userId] : []), ...binds, filters.limit, filters.offset),
     db.prepare(`SELECT COUNT(*) AS total ${FROM_CARDS} ${clause}`).bind(...binds),
-    db.prepare('SELECT COUNT(*) AS total FROM scoring_criteria WHERE is_active = 1'),
+    db.prepare(COUNT_ACTIVE_CRITERIA_SQL),
   ])
 
   const totalCriteria = criteria.results[0]?.total ?? 0
@@ -175,9 +200,78 @@ export async function getCard(
   return row ? toCard(row, await countActiveCriteria(db), withWallet) : null
 }
 
+/**
+ * A card's networks with the BIN prefixes behind each. Not on the public card --
+ * see the note in cardTypes.ts -- so this is the one door to it, and it exists
+ * for the verification module rather than for a response.
+ *
+ * One query, and the LEFT JOIN means a network with no prefixes still appears.
+ */
+export async function listCardNetworks(
+  db: D1Database,
+  cardId: string,
+): Promise<CardNetwork[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT nw.code AS network, cb.bin_prefix
+       FROM card_networks cn
+       JOIN networks nw ON nw.id = cn.network_id
+       LEFT JOIN card_bins cb ON cb.card_id = cn.card_id AND cb.network_id = cn.network_id
+       WHERE cn.card_id = ?
+       ORDER BY nw.code, cb.bin_prefix`,
+    )
+    .bind(cardId)
+    .all<{ network: NetworkCode; bin_prefix: string | null }>()
+
+  const networks: CardNetwork[] = []
+  for (const row of results) {
+    let entry = networks.find((n) => n.network === row.network)
+    if (!entry) networks.push((entry = { network: row.network, bins: [] }))
+    if (row.bin_prefix !== null) entry.bins.push(row.bin_prefix)
+  }
+
+  return networks
+}
+
 async function requireCard(db: D1Database, id: string): Promise<void> {
   const found = await db.prepare('SELECT 1 FROM cards WHERE id = ?').bind(id).first()
   if (!found) throw ApiError.notFound(`Card '${id}'`)
+}
+
+/**
+ * Replaces a card's whole network set, matching PUT /v1/cards/:id/scores rather
+ * than merging: repeated calls cannot accumulate duplicates.
+ *
+ * Deleting a network that still has BIN rows trips the composite foreign key in
+ * 0009 and is mapped to a 409. That is deliberate -- silently dropping the BINs
+ * with it would destroy data the caller never mentioned.
+ */
+async function replaceNetworks(
+  db: D1Database,
+  cardId: string,
+  networks: NetworkCode[],
+): Promise<void> {
+  // `NOT IN ()` is not valid SQL, so an empty set drops the clause rather than
+  // emitting it.
+  const keep =
+    networks.length > 0
+      ? `AND network_id NOT IN (SELECT id FROM networks WHERE code IN (${placeholders(networks.length)}))`
+      : ''
+
+  await db.batch([
+    db.prepare(`DELETE FROM card_networks WHERE card_id = ? ${keep}`).bind(cardId, ...networks),
+    // The card may already be on some of these; the pair is the primary key.
+    // The SELECT is what turns a code into an id, so an unknown code inserts
+    // nothing rather than a bad row -- validate.ts is what reports it.
+    ...networks.map((code) =>
+      db
+        .prepare(
+          `INSERT INTO card_networks (card_id, network_id)
+           SELECT ?, id FROM networks WHERE code = ? ON CONFLICT DO NOTHING`,
+        )
+        .bind(cardId, code),
+    ),
+  ])
 }
 
 export async function createCard(db: D1Database, input: CardInput): Promise<RatedCard> {
@@ -201,6 +295,14 @@ export async function createCard(db: D1Database, input: CardInput): Promise<Rate
       .run()
   } catch (err) {
     throw mapWriteError(err, input.name)
+  }
+
+  if (input.networks && input.networks.length > 0) {
+    try {
+      await replaceNetworks(db, id, input.networks)
+    } catch (err) {
+      throw mapWriteError(err, input.name, true)
+    }
   }
 
   const card = await getCard(db, id)
@@ -239,6 +341,14 @@ export async function updateCard(
     }
   }
 
+  if (patch.networks) {
+    try {
+      await replaceNetworks(db, id, patch.networks)
+    } catch (err) {
+      throw mapWriteError(err, patch.name ?? id, true)
+    }
+  }
+
   const card = await getCard(db, id)
   if (!card) throw ApiError.notFound(`Card '${id}'`)
   return card
@@ -255,12 +365,19 @@ export async function deactivateCard(db: D1Database, id: string): Promise<void> 
  * if it slipped past validation. Both constraints are mapped rather than left
  * to surface as a 500.
  */
-function mapWriteError(err: unknown, name: string): unknown {
+function mapWriteError(err: unknown, name: string, networksTouched = false): unknown {
   if (!(err instanceof Error)) return err
   if (/UNIQUE constraint failed/i.test(err.message)) {
     return ApiError.conflict(`That bank already has a card named '${name}'.`)
   }
   if (/FOREIGN KEY constraint failed/i.test(err.message)) {
+    // Two causes now: an unknown bankId on the card row, or dropping a network
+    // that still has BIN prefixes hanging off it.
+    if (networksTouched) {
+      return ApiError.conflict(
+        `Cannot remove a network from '${name}' while BIN prefixes are still on file for it.`,
+      )
+    }
     return ApiError.validation(['bankId does not match a known bank.'])
   }
   return err
