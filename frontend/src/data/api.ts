@@ -5,6 +5,7 @@
  */
 
 import type { Card, CardId } from './cards'
+import type { CheckoutSuccess } from './razorpayCheckout'
 import type { VerificationStatus } from '../state/walletTypes'
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
@@ -262,4 +263,59 @@ export async function setWalletCardStatus(
       body: JSON.stringify({ status }),
     }),
   )
+}
+
+/* ----------------------------------------------------- card verification */
+
+export type VerificationOrder = {
+  verificationId: string
+  keyId: string
+  orderId: string
+  amount: number
+  currency: string
+  cardName: string
+  issuer: string
+  allowed: { iins: string[]; networks: string[] }
+}
+
+/**
+ * Mints the ₹1 order Checkout needs, and hands back the BIN list to narrow the
+ * modal to this card's own plastic.
+ */
+export function startVerification(cardId: CardId): Promise<VerificationOrder> {
+  return request<VerificationOrder>('/v1/verifications', {
+    method: 'POST',
+    body: JSON.stringify({ cardId }),
+  })
+}
+
+export type VerificationResult = {
+  verificationId: string
+  status: 'created' | 'verified' | 'mismatched' | 'failed'
+  releaseState: 'pending' | 'voided' | 'refunded'
+  card: {
+    network: string | null
+    last4: string | null
+    type: string | null
+    issuer: string | null
+  }
+  reason?: string
+}
+
+/**
+ * Hands Checkout's three callback fields to the server, which verifies the
+ * signature, checks the card that actually paid against the one being claimed,
+ * and gives the rupee back either way.
+ *
+ * A card that does not match answers 422 with a `reason`, which `request`
+ * raises as an ApiError -- so a mismatch is a rejection, not a silent pass.
+ */
+export function confirmVerification(
+  verificationId: string,
+  payload: CheckoutSuccess,
+): Promise<VerificationResult> {
+  return request<VerificationResult>(`/v1/verifications/${verificationId}/confirm`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
 }

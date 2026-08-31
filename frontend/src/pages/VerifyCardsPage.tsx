@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Button } from '../components/Button'
 import { CardArt } from '../components/CardArt'
 import { Screen } from '../components/Screen'
 import type { GlowSpec } from '../components/Screen'
+import { confirmVerification, startVerification } from '../data/api'
 import type { CardId } from '../data/cards'
+import { loadCheckout, openCheckout } from '../data/razorpayCheckout'
 import { verifyLine } from '../data/scoring'
 import { STATUS_COLOR, STATUS_LABEL, verifyNote } from '../data/verification'
 import { navigate } from '../router/hashRouter'
@@ -20,12 +22,95 @@ const GLOWS: GlowSpec[] = [
 
 export function VerifyCardsPage() {
   const [openNote, setOpenNote] = useState<CardId | null>(null)
+  /** Per-card message from the last attempt: why it failed, or what matched. */
+  const [outcome, setOutcome] = useState<Record<CardId, string>>({})
+  /**
+   * Cards with a modal open right now, in this tab.
+   *
+   * The button locks on this rather than on the server's 'pending', because
+   * 'pending' outlives the attempt: a tab closed mid-payment leaves it set with
+   * nothing coming to clear it, and keying the disable off it would strand the
+   * card on "Waiting…" with no way to retry.
+   */
+  const [busy, setBusy] = useState<Record<CardId, boolean>>({})
   const dispatch = useAppDispatch()
   const wallet = useAppSelector(selectWallet)
   const chosenCards = useAppSelector(selectChosenCards)
   const verifiedCards = useAppSelector(selectVerifiedCards)
   const statusOf = (id: CardId) => wallet.vstatus[id] ?? 'unverified'
   const verifiedDateOf = (id: CardId) => wallet.verifiedAt[id]
+
+  /**
+   * The real verification: mint an order, open Checkout narrowed to this card's
+   * BINs, then hand the callback to the server to decide.
+   *
+   * Optimistically marks the row 'pending' so the button locks while the modal
+   * is up, and rolls back to 'failed' on anything short of success -- a
+   * dismissed modal included, otherwise the row would sit on 'Waiting…' with
+   * nothing coming.
+   */
+  const verify = useCallback(
+    async (cardId: CardId) => {
+      if (busy[cardId]) return
+      setBusy((current) => ({ ...current, [cardId]: true }))
+      setOutcome((current) => ({ ...current, [cardId]: '' }))
+      dispatch(walletActions.startVerification(cardId))
+
+      const fail = (message: string) => {
+        dispatch(walletActions.setVerificationStatus({ id: cardId, status: 'failed' }))
+        setOutcome((current) => ({ ...current, [cardId]: message }))
+      }
+
+      try {
+        const [order, Razorpay] = await Promise.all([startVerification(cardId), loadCheckout()])
+
+        const result = await openCheckout(Razorpay, {
+          keyId: order.keyId,
+          orderId: order.orderId,
+          amount: order.amount,
+          currency: order.currency,
+          cardName: order.cardName,
+          issuer: order.issuer,
+          iins: order.allowed.iins,
+          prefill: wallet.user
+            ? { name: wallet.user.name, email: wallet.user.email }
+            : undefined,
+        })
+
+        if (result.kind === 'dismissed') {
+          fail('Verification cancelled. The ₹1 authorisation was never taken.')
+          return
+        }
+        if (result.kind === 'failed') {
+          fail(result.reason)
+          return
+        }
+
+        const confirmed = await confirmVerification(order.verificationId, result.payload)
+
+        dispatch(
+          walletActions.setVerificationStatus({
+            id: cardId,
+            status: 'verified',
+            at: new Date().toISOString(),
+          }),
+        )
+        setOutcome((current) => ({
+          ...current,
+          [cardId]: `Matched a ${confirmed.card.network} card ending ${confirmed.card.last4}. ${
+            confirmed.releaseState === 'refunded'
+              ? 'The ₹1 has been refunded.'
+              : 'The ₹1 was never captured and will be released by your bank.'
+          }`,
+        }))
+      } catch (err) {
+        fail(err instanceof Error ? err.message : 'Verification failed. Please try again.')
+      } finally {
+        setBusy((current) => ({ ...current, [cardId]: false }))
+      }
+    },
+    [busy, dispatch, wallet.user],
+  )
 
   const chosenCount = chosenCards.length
   const verifiedCount = verifiedCards.length
@@ -55,7 +140,9 @@ export function VerifyCardsPage() {
           chosenCards.map((card) => {
             const status = statusOf(card.id)
             const isVerified = status === 'verified'
-            const isPending = status === 'pending'
+            // In flight in this tab. A stale server-side 'pending' still shows
+            // its label, but must not lock the button.
+            const isPending = busy[card.id] === true
             const isFailed = status === 'failed'
 
             const rowBorder = isVerified
@@ -101,15 +188,23 @@ export function VerifyCardsPage() {
                         return
                       }
                       setOpenNote(card.id)
-                      dispatch(walletActions.startVerification(card.id))
+                      void verify(card.id)
                     }}
                   >
-                    {isVerified ? 'Verified' : isPending ? 'Waiting…' : isFailed ? 'Retry' : 'Verify'}
+                    {isVerified
+                      ? 'Verified'
+                      : isPending
+                        ? 'Waiting…'
+                        : isFailed || status === 'pending'
+                          ? 'Retry'
+                          : 'Verify'}
                   </button>
                 </div>
 
                 {openNote === card.id && status !== 'unverified' ? (
-                  <div className={styles.note}>{verifyNote(status, verifiedDateOf(card.id))}</div>
+                  <div className={styles.note}>
+                    {outcome[card.id] || verifyNote(status, verifiedDateOf(card.id))}
+                  </div>
                 ) : null}
               </div>
             )

@@ -5,55 +5,19 @@ import { saveWalletState, loadWalletState } from './walletPersistence'
 import { scoreReducer } from './scoreSlice'
 import { walletActions, walletReducer } from './walletSlice'
 
-const VERIFY_DELAY_MS = 2200
-const DECLINE_DELAY_MS = 900
-const verificationTimers = new Map<string, ReturnType<typeof setTimeout>>()
-
 const listenerMiddleware = createListenerMiddleware()
 
-function cancelVerification(id: string) {
-  const timer = verificationTimers.get(id)
-  if (timer !== undefined) {
-    clearTimeout(timer)
-    verificationTimers.delete(id)
-  }
-}
-
-listenerMiddleware.startListening({
-  actionCreator: walletActions.startVerification,
-  effect: (action, listenerApi) => {
-    const id = action.payload
-    cancelVerification(id)
-    const willDecline = typeof navigator !== 'undefined' && navigator.onLine === false
-    const timer = setTimeout(
-      () => {
-        verificationTimers.delete(id)
-        listenerApi.dispatch(
-          walletActions.setVerificationStatus({
-            id,
-            status: willDecline ? 'failed' : 'verified',
-            at: willDecline ? undefined : new Date().toISOString(),
-          }),
-        )
-      },
-      willDecline ? DECLINE_DELAY_MS : VERIFY_DELAY_MS,
-    )
-    verificationTimers.set(id, timer)
-  },
-})
-
-listenerMiddleware.startListening({
-  actionCreator: walletActions.toggleCard,
-  effect: (action) => cancelVerification(action.payload),
-})
-
-listenerMiddleware.startListening({
-  actionCreator: walletActions.reset,
-  effect: () => {
-    verificationTimers.forEach(clearTimeout)
-    verificationTimers.clear()
-  },
-})
+/*
+ * There used to be a listener here that answered `startVerification` with a
+ * 2.2-second setTimeout and then marked the card 'verified'. It was the design
+ * mock standing in for a verification that did not exist yet.
+ *
+ * It is gone because verification is real now: VerifyCardsPage opens Razorpay
+ * Checkout and the server decides, in POST /v1/verifications/:id/confirm. While
+ * both existed the mock won every race -- it fired 2.2s after the modal opened,
+ * long before anyone finished paying -- so every card came out verified whatever
+ * Razorpay said. `startVerification` now only paints the row 'pending'.
+ */
 
 /**
  * Write-through to the server, for signed-in visitors only.
