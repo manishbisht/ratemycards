@@ -1,6 +1,32 @@
-import { env } from 'cloudflare:test'
+import { SELF, env } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
 import { NETWORK_ID_PATTERN } from '../src/modules/networks/networkTypes'
+
+const base = 'http://api.test'
+const AUTH = { Authorization: 'Bearer test-admin-token', 'Content-Type': 'application/json' }
+
+function send(method: string, path: string, body?: unknown) {
+  return SELF.fetch(`${base}${path}`, {
+    method,
+    headers: AUTH,
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  })
+}
+
+async function json(res: Response) {
+  return (await res.json()) as any
+}
+
+let unique = 0
+function network(overrides: Record<string, unknown> = {}) {
+  unique += 1
+  return {
+    code: `testnet${unique}`,
+    name: `Test Network ${unique}`,
+    binRules: [{ kind: 'glob', value: '9*' }],
+    ...overrides,
+  }
+}
 
 /**
  * The seed in 0010 is the source of the network list. These assertions are what
@@ -76,5 +102,135 @@ describe('networks seed', () => {
       "SELECT COUNT(*) AS n FROM cards WHERE type <> 'credit'",
     ).first<{ n: number }>()
     expect(other?.n).toBe(0)
+  })
+})
+
+describe('/v1/networks', () => {
+  it('mints a network_-prefixed id and echoes its rules', async () => {
+    const res = await send('POST', '/v1/networks', network({ name: 'Elo' }))
+    expect(res.status).toBe(201)
+
+    const body = await json(res)
+    expect(body.id).toMatch(NETWORK_ID_PATTERN)
+    expect(res.headers.get('Location')).toBe(`/v1/networks/${body.id}`)
+    expect(body.name).toBe('Elo')
+    expect(body.isActive).toBe(true)
+    expect(body.binRules).toEqual([{ kind: 'glob', value: '9*' }])
+  })
+
+  it('rejects a duplicate code with 409', async () => {
+    const dup = network({ code: 'dupnet' })
+    await send('POST', '/v1/networks', dup)
+    const res = await send('POST', '/v1/networks', dup)
+    expect(res.status).toBe(409)
+    expect((await json(res)).error.code).toBe('conflict')
+  })
+
+  it('rejects a code that is not lowercase alphanumeric', async () => {
+    const res = await send('POST', '/v1/networks', network({ code: 'Bad Code' }))
+    expect(res.status).toBe(400)
+    expect((await json(res)).error.details.join(' ')).toContain('code')
+  })
+
+  it('requires at least one bin rule', async () => {
+    const res = await send('POST', '/v1/networks', network({ binRules: [] }))
+    expect(res.status).toBe(400)
+    expect((await json(res)).error.details.join(' ')).toMatch(/at least one/)
+  })
+
+  it('rejects a glob carrying a regex metacharacter', async () => {
+    const res = await send('POST', '/v1/networks', network({
+      binRules: [{ kind: 'glob', value: '4|5*' }],
+    }))
+    expect(res.status).toBe(400)
+  })
+
+  it('rejects a structurally malformed glob', async () => {
+    const res = await send('POST', '/v1/networks', network({
+      binRules: [{ kind: 'glob', value: '4[' }],
+    }))
+    expect(res.status).toBe(400)
+    expect((await json(res)).error.details.join(' ')).toMatch(/must be digits/)
+  })
+
+  it('rejects an unknown rule kind', async () => {
+    const res = await send('POST', '/v1/networks', network({
+      binRules: [{ kind: 'regex', value: '4.*' }],
+    }))
+    expect(res.status).toBe(400)
+  })
+
+  it('rejects a backwards range', async () => {
+    const res = await send('POST', '/v1/networks', network({
+      binRules: [{ kind: 'range', value: '2720-2221' }],
+    }))
+    expect(res.status).toBe(400)
+  })
+
+  it('replaces the whole rule set on patch rather than merging', async () => {
+    const created = await json(await send('POST', '/v1/networks', network()))
+    const res = await send('PATCH', `/v1/networks/${created.id}`, {
+      binRules: [{ kind: 'range', value: '1000-1999' }],
+    })
+    expect(res.status).toBe(200)
+    expect((await json(res)).binRules).toEqual([{ kind: 'range', value: '1000-1999' }])
+  })
+
+  it('leaves the rules alone when patch omits them', async () => {
+    const created = await json(await send('POST', '/v1/networks', network()))
+    const res = await send('PATCH', `/v1/networks/${created.id}`, { name: 'Renamed' })
+    expect((await json(res)).binRules).toEqual([{ kind: 'glob', value: '9*' }])
+  })
+
+  it('clears the rules on an explicit empty patch', async () => {
+    const created = await json(await send('POST', '/v1/networks', network()))
+    const res = await send('PATCH', `/v1/networks/${created.id}`, { binRules: [] })
+    expect((await json(res)).binRules).toEqual([])
+  })
+
+  it('soft-deletes, keeping the row and its rules', async () => {
+    const created = await json(await send('POST', '/v1/networks', network()))
+    expect((await send('DELETE', `/v1/networks/${created.id}`)).status).toBe(204)
+
+    const after = await json(await send('GET', `/v1/networks/${created.id}`))
+    expect(after.isActive).toBe(false)
+    expect(after.binRules).toHaveLength(1)
+  })
+
+  it('omits inactive networks from the list unless asked', async () => {
+    const created = await json(await send('POST', '/v1/networks', network()))
+    await send('DELETE', `/v1/networks/${created.id}`)
+
+    const listed = await json(await send('GET', '/v1/networks'))
+    expect(listed.data.some((n: any) => n.id === created.id)).toBe(false)
+
+    const all = await json(await send('GET', '/v1/networks?includeInactive=true'))
+    expect(all.data.some((n: any) => n.id === created.id)).toBe(true)
+  })
+
+  it('404s an unknown id', async () => {
+    const res = await send('GET', '/v1/networks/network_ffffffffffffffffffffffffffffffff')
+    expect(res.status).toBe(404)
+  })
+
+  /**
+   * Reads are admin-guarded too, which departs from /v1/banks and /v1/cards.
+   * Nothing public consumes this resource, so it is not published.
+   */
+  it('requires an admin token on every verb, reads included', async () => {
+    for (const [method, path] of [
+      ['GET', '/v1/networks'],
+      ['GET', '/v1/networks/network_ffffffffffffffffffffffffffffffff'],
+      ['POST', '/v1/networks'],
+      ['PATCH', '/v1/networks/network_ffffffffffffffffffffffffffffffff'],
+      ['DELETE', '/v1/networks/network_ffffffffffffffffffffffffffffffff'],
+    ] as const) {
+      const res = await SELF.fetch(`${base}${path}`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        ...(method === 'GET' || method === 'DELETE' ? {} : { body: '{}' }),
+      })
+      expect(res.status, `${method} ${path}`).toBe(401)
+    }
   })
 })
