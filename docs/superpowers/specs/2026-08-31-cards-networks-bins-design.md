@@ -208,24 +208,37 @@ resolve, by the same `ids` carve-out as the BIN gate.
 
 ## API
 
-### `/v1/networks` — new, mirroring `/v1/banks`
+### `/v1/networks` — new, admin-only throughout
 
 ```
-GET    /v1/networks            public   { data: [{ id, code, name, isActive, binRules }], total }
-GET    /v1/networks/:id        public
+GET    /v1/networks            admin    { data: [{ id, code, name, isActive, binRules }], total }
+GET    /v1/networks/:id        admin
 POST   /v1/networks            admin    { code, name, binRules, isActive? }
 PATCH  /v1/networks/:id        admin    partial; binRules replaces
 DELETE /v1/networks/:id        admin    soft delete (is_active = 0)
 ```
 
+Reads are admin-guarded too, which departs from `/v1/banks` and `/v1/cards`
+where `GET` is public. The reason is that this resource has no public consumer:
+the frontend calls only `/v1/cards`, `/v1/wallet*` and `/v1/verifications*`, and
+nothing in the UI shows a network. The admin panel is the sole reader.
+
+Least exposure is the right default when it costs nothing, and the asymmetry
+favours it — publishing this later, if a network badge on a card ever wants it,
+is a one-line change; un-publishing it once a client depends on it is not.
+
+`/v1/banks` is the cautionary case: its `GET` is public and no client has ever
+called it. Not worth changing now, but not worth copying either.
+
 `binRules` is `[{ kind: 'glob' | 'range', value: string }]`. On `PATCH` it
 replaces the whole rule set rather than merging, matching
 `PUT /v1/cards/:id/scores`; omitting it leaves the rules untouched, and `[]`
 clears them — which makes the network unusable for new BINs until rules return.
+`POST` requires at least one rule.
 
-`POST` requires at least one rule. Rules are public: they are the ISO/IEC 7812
-prefix table, not card data. `4*` tells an attacker nothing a Visa card does not
-already tell them, and actual prefixes are still never published.
+Note that `GET /v1/cards?network=visa` stays public. A public caller cannot
+enumerate valid codes any more, but the codes are guessable and the filter
+exposes nothing the catalog does not already publish.
 
 A soft-deleted network keeps its existing `card_networks` rows and keeps working
 as a `?network=` filter value. What changes is that card writes reject it. An
@@ -318,7 +331,7 @@ catalog no longer shrinks under a wallet, so the listener stays correct.
 | `cardsRead.test.ts` | BIN-less card absent from `GET /v1/cards`; present via `?ids=`; present via `GET /v1/cards/:id`; present via `?includeUnselectable=true`; `?network=visa` still filters; deactivated bank hides its cards but `?includeInactive=true` shows them |
 | `walletPersistence.test.ts` | a wallet holding a BIN-less card resolves, scores, and keeps its verification status |
 | `verification.test.ts` | existing behaviour holds through the `network_id` change; a card with networks but no BINs still fails to start a verification |
-| new `networks.test.ts` | CRUD; `binRules` replaces; soft delete keeps `?network=` working; writes reject an inactive network |
+| new `networks.test.ts` | CRUD; `binRules` replaces and `[]` clears; `POST` without rules is a 422; soft delete keeps `?network=` working; card writes reject an inactive network; **every** verb including `GET` is a 401 without an admin token |
 
 ## Sequence
 
