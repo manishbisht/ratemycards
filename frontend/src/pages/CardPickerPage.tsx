@@ -1,17 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Button } from '../components/Button'
 import { CardRow } from '../components/CardRow'
 import { DeckStrip } from '../components/DeckStrip'
 import { Screen } from '../components/Screen'
 import type { GlowSpec } from '../components/Screen'
-import { fetchCards } from '../data/api'
-import type { Card } from '../data/cards'
 import { pickedLine, primaryCta, verifyLine } from '../data/scoring'
 import { STATUS_COLOR, STATUS_LABEL } from '../data/verification'
-import { useDebounced } from '../hooks/useDebounced'
 import { navigate } from '../router/hashRouter'
+import { loadCatalog } from '../store/catalogSlice'
 import { useAppDispatch, useAppSelector } from '../store/hooks'
-import { selectCatalogStatus, selectChosenCards, selectVerifiedCards, selectWallet } from '../store/selectors'
+import {
+  selectCatalog,
+  selectCatalogStatus,
+  selectChosenCards,
+  selectVerifiedCards,
+  selectWallet,
+} from '../store/selectors'
 import { walletActions } from '../store/walletSlice'
 import styles from './CardPickerPage.module.css'
 
@@ -20,44 +24,46 @@ const GLOWS: GlowSpec[] = [
   { color: 'rgba(20,184,166,0.22)', size: 440, bottom: -160, left: -140 },
 ]
 
-/** The list scrolls, so this is a page size rather than the design's old cap of 5. */
-const RESULT_LIMIT = 25
-const SEARCH_DEBOUNCE_MS = 200
-
-/** Tagged with the query it answers, so loading is derived, not written. */
-type Results = { key: string; cards: Card[]; total: number; failed: boolean }
-
+/**
+ * The whole catalog already lives in the store -- `loadCatalog` fetches it once
+ * on mount -- so this page neither fetches nor pages. It filters that array.
+ *
+ * That is why there is no debounce: matching a hundred-odd cards in memory on
+ * every keystroke is free, and nothing is waiting on the network.
+ */
 export function CardPickerPage() {
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<Results | null>(null)
-  const [attempt, setAttempt] = useState(0)
 
   const dispatch = useAppDispatch()
   const state = useAppSelector(selectWallet)
+  const catalog = useAppSelector(selectCatalog)
   const chosenCards = useAppSelector(selectChosenCards)
   const verifiedCards = useAppSelector(selectVerifiedCards)
   const catalogStatus = useAppSelector(selectCatalogStatus)
   const statusOf = (id: string) => state.vstatus[id] ?? 'unverified'
 
-  const settledQuery = useDebounced(query.trim(), SEARCH_DEBOUNCE_MS)
+  const trimmed = query.trim()
 
-  const requestKey = `${attempt}:${settledQuery}`
+  // Matches what the API's `q` used to search: the card's name or its issuer.
+  // Also drops any unselectable card -- one with no BIN prefixes on file --
+  // since nothing can verify it, so offering it in the picker would be a dead
+  // end. The catalog itself still carries these cards; only the picker hides
+  // them.
+  const shown = useMemo(() => {
+    const needle = trimmed.toLowerCase()
+    return catalog.filter(
+      (card) =>
+        card.selectable &&
+        (!needle ||
+          card.name.toLowerCase().includes(needle) ||
+          card.issuer.toLowerCase().includes(needle)),
+    )
+  }, [catalog, trimmed])
 
-  useEffect(() => {
-    const controller = new AbortController()
-    const key = requestKey
-
-    fetchCards({ q: settledQuery || undefined, limit: RESULT_LIMIT }, controller.signal)
-      .then((page) => setResults({ key, cards: page.cards, total: page.total, failed: false }))
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        setResults({ key, cards: [], total: 0, failed: true })
-      })
-
-    return () => controller.abort()
-  }, [requestKey, settledQuery])
-
-  const loading = results === null || results.key !== requestKey
+  // One loading path and one error path, both the catalog's -- this page no
+  // longer has any request of its own to be in flight.
+  const loading = catalogStatus === 'idle' || catalogStatus === 'loading'
+  const failed = catalogStatus === 'error'
 
   const chosenCount = chosenCards.length
   const verifiedCount = verifiedCards.length
@@ -101,21 +107,25 @@ export function CardPickerPage() {
       <div className={styles.results} aria-busy={loading}>
         {loading ? (
           <div className={styles.empty}>Loading cards…</div>
-        ) : results.failed ? (
+        ) : failed ? (
           <div className={styles.empty}>
             Could not load the catalog.
             <div>
-              <button type="button" className={styles.retry} onClick={() => setAttempt((n) => n + 1)}>
+              <button
+                type="button"
+                className={styles.retry}
+                onClick={() => void dispatch(loadCatalog())}
+              >
                 Try again
               </button>
             </div>
           </div>
-        ) : results.cards.length === 0 ? (
+        ) : shown.length === 0 ? (
           <div className={styles.empty}>
-            {settledQuery ? `No cards match “${settledQuery}”.` : 'No cards in the catalog yet.'}
+            {trimmed ? `No cards match “${trimmed}”.` : 'No cards in the catalog yet.'}
           </div>
         ) : (
-          results.cards.map((card) => {
+          shown.map((card) => {
             const on = state.picked.includes(card.id)
             const status = statusOf(card.id)
 

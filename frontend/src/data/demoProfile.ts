@@ -18,10 +18,10 @@ export type DemoProfile = {
  * public profiles are a real endpoint there is nothing to fetch them from.
  */
 const DEMO_CARDS: Card[] = [
-  { id: 'demo-cashback', name: 'Cashback', issuer: 'SBI', short: 'SBI\nCashback', joiningFee: 999, annualFee: 999 },
-  { id: 'demo-atlas', name: 'Atlas', issuer: 'Axis', short: 'Axis\nAtlas', joiningFee: 5000, annualFee: 5000 },
-  { id: 'demo-amexplat', name: 'Platinum Charge Card', issuer: 'American Express', short: 'Amex\nPlatinum', joiningFee: 66000, annualFee: 66000 },
-  { id: 'demo-infinia', name: 'Infinia Metal', issuer: 'HDFC', short: 'HDFC\nInfinia Metal', joiningFee: 12500, annualFee: 12500 },
+  { id: 'demo-cashback', name: 'Cashback', issuer: 'SBI', short: 'SBI\nCashback', joiningFee: 999, annualFee: 999, selectable: true },
+  { id: 'demo-atlas', name: 'Atlas', issuer: 'Axis', short: 'Axis\nAtlas', joiningFee: 5000, annualFee: 5000, selectable: true },
+  { id: 'demo-amexplat', name: 'Platinum Charge Card', issuer: 'American Express', short: 'Amex\nPlatinum', joiningFee: 66000, annualFee: 66000, selectable: true },
+  { id: 'demo-infinia', name: 'Infinia Metal', issuer: 'HDFC', short: 'HDFC\nInfinia Metal', joiningFee: 12500, annualFee: 12500, selectable: true },
 ]
 
 export const DEMO_PROFILES: Record<string, DemoProfile> = {

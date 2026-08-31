@@ -95,6 +95,12 @@ export type Card = {
   joiningFee: number
   annualFee: number
   isActive: boolean
+  /**
+   * True when the card has at least one BIN prefix on file. This is what the
+   * picker filters on to decide whether a card can be offered for
+   * verification -- it exposes no prefix, only whether any exist.
+   */
+  selectable: boolean
   /** Only present when the request carried a session token. */
   wallet?: CardWallet
 }

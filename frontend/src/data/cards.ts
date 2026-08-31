@@ -17,6 +17,8 @@ export type Card = {
   short: string
   joiningFee: number
   annualFee: number
+  /** True when the card has at least one BIN prefix on file, i.e. can be verified. */
+  selectable: boolean
 }
 
 /** Card ids are minted by the API; anything else is stale local state. */

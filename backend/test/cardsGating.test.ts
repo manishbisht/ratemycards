@@ -93,6 +93,14 @@ describe('BIN-gated discovery', () => {
     expect(body.unknownIds).toEqual([])
   })
 
+  it('reports selectable on the card so a client can filter without guessing', async () => {
+    const gated = await json(await send('GET', `/v1/cards?ids=${gatedId}`))
+    expect(gated.data[0].selectable).toBe(false)
+
+    const withBins = await json(await send('GET', '/v1/cards?limit=1'))
+    expect(withBins.data[0].selectable).toBe(true)
+  })
+
   it('shows a card once it gains a bin', async () => {
     await send('PATCH', `/v1/cards/${gatedId}`, {
       networks: [{ code: 'visa', bins: ['412399'] }],

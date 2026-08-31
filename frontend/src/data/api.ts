@@ -102,6 +102,7 @@ type ApiCard = {
   joiningFee: number
   annualFee: number
   isActive: boolean
+  selectable: boolean
   wallet?: ApiCardWallet
 }
 
@@ -117,6 +118,7 @@ function toCard(card: ApiCard): Card {
     short: `${card.bank.name}\n${card.name}`,
     joiningFee: card.joiningFee,
     annualFee: card.annualFee,
+    selectable: card.selectable,
   }
 }
 
@@ -124,14 +126,28 @@ type ListResponse = { data: ApiCard[]; total: number }
 
 export type CardPage = { cards: Card[]; total: number }
 
+/**
+ * `total` ignores pagination, so a caller can compare it against how many cards
+ * it holds to know whether another page exists. The API caps `limit` at 100,
+ * which is why anything wanting the whole catalog has to page.
+ */
 export async function fetchCards(
-  params: { q?: string; ids?: CardId[]; limit?: number } = {},
+  params: {
+    q?: string
+    ids?: CardId[]
+    limit?: number
+    offset?: number
+    /** Opts out of the server's BIN gate. See catalogSlice's loadCatalog. */
+    includeUnselectable?: boolean
+  } = {},
   signal?: AbortSignal,
 ): Promise<CardPage> {
   const search = new URLSearchParams()
   if (params.q) search.set('q', params.q)
   if (params.ids) search.set('ids', params.ids.join(','))
   search.set('limit', String(params.limit ?? 50))
+  if (params.offset) search.set('offset', String(params.offset))
+  if (params.includeUnselectable) search.set('includeUnselectable', 'true')
 
   const body = await request<ListResponse>(`/v1/cards?${search}`, { signal })
   return { cards: body.data.map(toCard), total: body.total }

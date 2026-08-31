@@ -473,6 +473,7 @@ describe('the cards API serves both audiences', () => {
       'issuer',
       'joiningFee',
       'name',
+      'selectable',
       'type',
       'wallet',
     ])

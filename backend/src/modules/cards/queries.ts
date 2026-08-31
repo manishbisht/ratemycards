@@ -33,13 +33,15 @@ type CardRow = RatingRow & {
   is_active: number
   bank_id: string
   bank_name: string
+  selectable: number
   // Only selected when a caller is known; NULL for a card they do not hold.
   wallet_status?: VerificationStatus | null
   wallet_verified_at?: string | null
 }
 
 const CARD_COLUMNS = `c.id, c.name, c.country, c.type, c.joining_fee, c.annual_fee, c.is_active,
-  c.bank_id, b.name AS bank_name, r.weighted_sum, r.weight_total, r.scored_count`
+  c.bank_id, b.name AS bank_name, r.weighted_sum, r.weight_total, r.scored_count,
+  EXISTS (SELECT 1 FROM card_bins cb WHERE cb.card_id = c.id) AS selectable`
 
 const WALLET_COLUMNS = `, w.verification_status AS wallet_status, w.verified_at AS wallet_verified_at`
 
@@ -84,6 +86,7 @@ function toCard(row: CardRow, totalCriteria: number, withWallet: boolean): Rated
     joiningFee: row.joining_fee,
     annualFee: row.annual_fee,
     isActive: row.is_active === 1,
+    selectable: row.selectable === 1,
     // Omitted entirely for anonymous callers: an absent key and a false one say
     // different things, and the public shape must not gain a field.
     ...(withWallet
