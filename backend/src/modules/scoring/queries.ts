@@ -204,10 +204,16 @@ export async function replaceCardScores(
   }
 }
 
+/**
+ * Exported as SQL, not just as the function below, because cards/queries.ts
+ * needs it as a prepared statement inside a db.batch rather than as its own
+ * round trip.
+ */
+export const COUNT_ACTIVE_CRITERIA_SQL =
+  'SELECT COUNT(*) AS total FROM scoring_criteria WHERE is_active = 1'
+
 export async function countActiveCriteria(db: D1Database): Promise<number> {
-  const row = await db
-    .prepare('SELECT COUNT(*) AS total FROM scoring_criteria WHERE is_active = 1')
-    .first<{ total: number }>()
+  const row = await db.prepare(COUNT_ACTIVE_CRITERIA_SQL).first<{ total: number }>()
   return row?.total ?? 0
 }
 
