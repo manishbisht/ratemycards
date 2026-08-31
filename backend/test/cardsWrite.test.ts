@@ -162,6 +162,29 @@ describe('POST /v1/cards', () => {
     })
     expect(res.status).toBe(400)
   })
+
+  it('defaults type to credit', async () => {
+    const body = await json(await send('POST', '/v1/cards', card()))
+    expect(body.type).toBe('credit')
+  })
+
+  it('stores an explicit type', async () => {
+    const body = await json(await send('POST', '/v1/cards', card({ type: 'charge' })))
+    expect(body.type).toBe('charge')
+  })
+
+  it('rejects an unknown type', async () => {
+    const res = await send('POST', '/v1/cards', card({ type: 'loyalty' }))
+    expect(res.status).toBe(400)
+    expect((await json(res)).error.details.join(' ')).toMatch(/type must be one of/)
+  })
+
+  it('patches the type', async () => {
+    const created = await json(await send('POST', '/v1/cards', card()))
+    const res = await send('PATCH', `/v1/cards/${created.id}`, { type: 'debit' })
+    expect(res.status).toBe(200)
+    expect((await json(res)).type).toBe('debit')
+  })
 })
 
 describe('the database enforces the bank link', () => {

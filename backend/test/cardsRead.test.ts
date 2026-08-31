@@ -159,6 +159,7 @@ describe('GET /v1/cards', () => {
       'issuer',
       'joiningFee',
       'name',
+      'type',
     ])
   })
 

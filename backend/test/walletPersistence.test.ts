@@ -59,6 +59,25 @@ function as(token: string, init: RequestInit = {}) {
   }
 }
 
+/**
+ * Seeds a verified card straight into the table.
+ *
+ * Deliberately not over the API: PATCH /v1/wallet/cards/:cardId refuses to set
+ * 'verified' precisely so a client cannot, and the earned path needs a real
+ * Razorpay payment (exercised in verification.test.ts). These tests only need
+ * the resulting state to assert something else about it.
+ */
+async function forceVerified(clerkId: string, cardId: string): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE wallet_cards
+     SET verification_status = 'verified',
+         verified_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+     WHERE card_id = ? AND user_id = (SELECT id FROM users WHERE clerk_id = ?)`,
+  )
+    .bind(cardId, clerkId)
+    .run()
+}
+
 beforeAll(async () => {
   tokenAda = await mintToken({
     sub: 'clerk_ada',
@@ -240,14 +259,40 @@ describe('wallet writes', () => {
     expect(res.status).toBe(404)
   })
 
-  it('records a verification status and stamps the date', async () => {
+  it('records a status the client is allowed to report', async () => {
     const res = await SELF.fetch(
       `${base}/v1/wallet/cards/${cardA}`,
-      as(tokenBob, { method: 'PATCH', body: JSON.stringify({ status: 'verified' }) }),
+      as(tokenBob, { method: 'PATCH', body: JSON.stringify({ status: 'pending' }) }),
     )
     expect(res.status).toBe(200)
 
     const card = ((await res.json()) as any).cards.find((entry: any) => entry.card.id === cardA)
+    expect(card.verificationStatus).toBe('pending')
+    expect(card.verifiedAt).toBeNull()
+  })
+
+  /**
+   * The hole this closes: while this endpoint accepted 'verified', the whole
+   * 1-rupee Razorpay check was bypassable with one curl.
+   */
+  it('refuses to let a client declare itself verified', async () => {
+    const res = await SELF.fetch(
+      `${base}/v1/wallet/cards/${cardA}`,
+      as(tokenBob, { method: 'PATCH', body: JSON.stringify({ status: 'verified' }) }),
+    )
+    expect(res.status).toBe(400)
+    expect(((await res.json()) as any).error.details[0]).toMatch(/completing a card verification/)
+
+    const wallet = (await (await SELF.fetch(`${base}/v1/wallet`, as(tokenBob))).json()) as any
+    const card = wallet.cards.find((entry: any) => entry.card.id === cardA)
+    expect(card.verificationStatus).not.toBe('verified')
+  })
+
+  it('stamps the date when a verification is earned', async () => {
+    await forceVerified('clerk_bob', cardA)
+
+    const wallet = (await (await SELF.fetch(`${base}/v1/wallet`, as(tokenBob))).json()) as any
+    const card = wallet.cards.find((entry: any) => entry.card.id === cardA)
     expect(card.verificationStatus).toBe('verified')
     expect(card.verifiedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
   })
@@ -273,7 +318,7 @@ describe('wallet writes', () => {
   it('404s a status write for a card the caller does not hold', async () => {
     const res = await SELF.fetch(
       `${base}/v1/wallet/cards/${cardB}`,
-      as(tokenBob, { method: 'PATCH', body: JSON.stringify({ status: 'verified' }) }),
+      as(tokenBob, { method: 'PATCH', body: JSON.stringify({ status: 'pending' }) }),
     )
     expect(res.status).toBe(404)
   })
@@ -314,10 +359,7 @@ describe('merge at sign-in', () => {
   })
 
   it('leaves an already-verified card alone rather than downgrading it', async () => {
-    await SELF.fetch(
-      `${base}/v1/wallet/cards/${cardB}`,
-      as(tokenAda, { method: 'PATCH', body: JSON.stringify({ status: 'verified' }) }),
-    )
+    await forceVerified('clerk_ada', cardB)
 
     // A fresh browser re-sending the same card must not reset its status.
     const res = await SELF.fetch(
@@ -381,5 +423,59 @@ describe('the cards API serves both audiences', () => {
   it('carries the wallet block on a single-card read too', async () => {
     const res = await SELF.fetch(`${base}/v1/cards/${cardA}`, as(tokenAda))
     expect(((await res.json()) as any).wallet.inWallet).toBe(true)
+  })
+
+
+  it('marks a card the caller does not hold as not in the wallet', async () => {
+    const res = await SELF.fetch(`${base}/v1/cards?ids=${cardA}`, as(tokenBob))
+    const card = ((await res.json()) as any).data[0]
+    expect(card.wallet.inWallet).toBe(false)
+    expect(card.wallet.verificationStatus).toBe('unverified')
+  })
+
+  it('still hides the rating from a signed-in caller', async () => {
+    const res = await SELF.fetch(`${base}/v1/cards?ids=${cardA}`, as(tokenAda))
+    expect(((await res.json()) as any).data[0]).not.toHaveProperty('rating')
+  })
+
+  it('carries the wallet block on a single-card read too', async () => {
+    const res = await SELF.fetch(`${base}/v1/cards/${cardA}`, as(tokenAda))
+    expect(((await res.json()) as any).wallet.inWallet).toBe(true)
+  })
+
+  /**
+   * The wallet join adds a bind to the page query but not to the networks
+   * query beside it in the batch. If those two bind lists ever drift, this is
+   * where it shows: the networks would attach to the wrong card, or the filter
+   * would silently select a different page.
+   */
+  /**
+   * A signed-in caller gets one extra key -- `wallet` -- and nothing else. In
+   * particular, having a session does not unlock the networks or BIN prefixes
+   * behind a card; those are not on this payload for anyone.
+   */
+  it('adds the wallet block and nothing else for a signed-in caller', async () => {
+    await SELF.fetch(`${base}/v1/cards/${cardA}`, {
+      method: 'PATCH',
+      headers: { Authorization: 'Bearer test-admin-token', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ networks: ['visa', 'rupay'] }),
+    })
+
+    const res = await SELF.fetch(`${base}/v1/cards?ids=${cardA}`, as(tokenAda))
+    const card = ((await res.json()) as any).data[0]
+
+    expect(Object.keys(card).sort()).toEqual([
+      'annualFee',
+      'bank',
+      'country',
+      'id',
+      'isActive',
+      'issuer',
+      'joiningFee',
+      'name',
+      'type',
+      'wallet',
+    ])
+    expect(card.wallet.inWallet).toBe(true)
   })
 })

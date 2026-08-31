@@ -10,6 +10,23 @@ export function generateCardId(): string {
 }
 
 /**
+ * What kind of card this is. Mirrors the CHECK constraint in migration 0012 --
+ * change one, change the other.
+ *
+ * Credit is the default and the whole of the launch catalog. The others exist
+ * because the column may as well accept them: SQLite cannot widen a CHECK
+ * without rebuilding the table, so the headroom is free now and expensive
+ * later.
+ */
+export const CARD_TYPES = ['credit', 'debit', 'charge', 'prepaid'] as const
+
+export type CardType = (typeof CARD_TYPES)[number]
+
+export function isCardType(value: unknown): value is CardType {
+  return typeof value === 'string' && (CARD_TYPES as readonly string[]).includes(value)
+}
+
+/**
  * One network a card runs on, with the BIN prefixes that network issues it
  * under. Internal: never serialised onto a card. `listCardNetworks` builds it
  * for the verification flow, which needs the prefixes to narrow Checkout.
@@ -73,6 +90,7 @@ export type Card = {
   /** Flat alias for the bank name, matching what the frontend renders. */
   issuer: string
   country: string
+  type: CardType
   /** Whole units of the card's local currency, not minor units. */
   joiningFee: number
   annualFee: number
@@ -99,6 +117,8 @@ export type CardInput = {
   joiningFee: number
   annualFee: number
   isActive?: boolean
+  /** 'credit' unless an admin said otherwise. */
+  type?: CardType
   /**
    * Replaces the card's whole network *and* BIN set rather than merging into
    * it, the same contract as PUT /v1/cards/:id/scores. Omitted leaves both

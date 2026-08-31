@@ -9,7 +9,8 @@ import {
 } from '../../http/validators'
 import { matchesBinRules } from '../networks/binRules'
 import type { NetworkForValidation } from '../networks/queries'
-import type { CardInput, CardNetworkInput, CardPatch } from './cardTypes'
+import { CARD_TYPES, isCardType } from './cardTypes'
+import type { CardInput, CardNetworkInput, CardPatch, CardType } from './cardTypes'
 
 /** Matches the CHECK constraint in migration 0002. */
 export const MAX_FEE = 10_000_000
@@ -67,6 +68,15 @@ function checkBins(
   }
 
   return bins
+}
+
+/** Overlaps the CHECK in migration 0012; this exists to produce a good 400. */
+function checkCardType(value: unknown, errors: string[]): CardType | undefined {
+  if (!isCardType(value)) {
+    errors.push(`type must be one of ${CARD_TYPES.join(', ')}.`)
+    return undefined
+  }
+  return value
 }
 
 /**
@@ -137,6 +147,7 @@ export function validateCardInput(
   const bankId = checkId(body.bankId, 'bankId', BANK_ID_PATTERN, errors)
   const name = checkText(body.name, 'name', 120, errors)
   const country = checkCountry(body.country, errors)
+  const type = body.type === undefined ? undefined : checkCardType(body.type, errors)
   const joiningFee = checkFee(body.joiningFee, 'joiningFee', errors)
   const annualFee = checkFee(body.annualFee, 'annualFee', errors)
 
@@ -164,6 +175,7 @@ export function validateCardInput(
       bankId,
       name,
       country,
+      type,
       joiningFee,
       annualFee,
       isActive: body.isActive as boolean | undefined,
@@ -189,6 +201,7 @@ export function validateCardPatch(
   }
   if (body.name !== undefined) patch.name = checkText(body.name, 'name', 120, errors)
   if (body.country !== undefined) patch.country = checkCountry(body.country, errors)
+  if (body.type !== undefined) patch.type = checkCardType(body.type, errors)
   if (body.joiningFee !== undefined) {
     patch.joiningFee = checkInteger(body.joiningFee, 'joiningFee', 0, MAX_FEE, errors)
   }

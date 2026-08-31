@@ -10,6 +10,7 @@ import type {
   CardNetwork,
   CardNetworkInput,
   CardPatch,
+  CardType,
   RatedCard,
 } from './cardTypes'
 import type { VerificationStatus } from '../wallet/walletTypes'
@@ -26,6 +27,7 @@ type CardRow = RatingRow & {
   id: string
   name: string
   country: string
+  type: string
   joining_fee: number
   annual_fee: number
   is_active: number
@@ -36,7 +38,7 @@ type CardRow = RatingRow & {
   wallet_verified_at?: string | null
 }
 
-const CARD_COLUMNS = `c.id, c.name, c.country, c.joining_fee, c.annual_fee, c.is_active,
+const CARD_COLUMNS = `c.id, c.name, c.country, c.type, c.joining_fee, c.annual_fee, c.is_active,
   c.bank_id, b.name AS bank_name, r.weighted_sum, r.weight_total, r.scored_count`
 
 const WALLET_COLUMNS = `, w.verification_status AS wallet_status, w.verified_at AS wallet_verified_at`
@@ -78,6 +80,7 @@ function toCard(row: CardRow, totalCriteria: number, withWallet: boolean): Rated
     // Not a column: the bank's name, under the field the frontend renders.
     issuer: row.bank_name,
     country: row.country,
+    type: row.type as CardType,
     joiningFee: row.joining_fee,
     annualFee: row.annual_fee,
     isActive: row.is_active === 1,
@@ -329,14 +332,15 @@ export async function createCard(
   try {
     await db
       .prepare(
-        `INSERT INTO cards (id, bank_id, name, country, joining_fee, annual_fee, is_active)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO cards (id, bank_id, name, country, type, joining_fee, annual_fee, is_active)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         id,
         input.bankId,
         input.name,
         input.country,
+        input.type ?? 'credit',
         input.joiningFee,
         input.annualFee,
         input.isActive === false ? 0 : 1,
@@ -374,6 +378,7 @@ export async function updateCard(
   assign('bank_id', patch.bankId)
   assign('name', patch.name)
   assign('country', patch.country)
+  assign('type', patch.type)
   assign('joining_fee', patch.joiningFee)
   assign('annual_fee', patch.annualFee)
   assign('is_active', patch.isActive === undefined ? undefined : patch.isActive ? 1 : 0)
