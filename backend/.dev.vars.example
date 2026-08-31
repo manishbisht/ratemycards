@@ -13,3 +13,13 @@ CLERK_WEBHOOK_SIGNING_SECRET="whsec_..."
 # that verifies the session tokens the frontend sends as
 # `Authorization: Bearer <jwt>`. `npx clerk@latest env pull` writes this for you.
 CLERK_SECRET_KEY="sk_test_..."
+
+# Razorpay key id. Not a secret -- it reaches the browser in the Checkout
+# options -- but it lives here so the API is the single place that knows it.
+# dashboard.razorpay.com -> Account & Settings -> API Keys.
+RAZORPAY_KEY_ID=<value>
+
+# Razorpay key secret. Signs nothing that leaves the Worker: it authenticates
+# the Orders/Refunds calls and verifies the Checkout callback signature. This
+# one must never reach the frontend.
+RAZORPAY_KEY_SECRET=<value>

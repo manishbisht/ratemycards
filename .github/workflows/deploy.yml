@@ -68,6 +68,8 @@ jobs:
       WORKER_SECRET_ADMIN_TOKEN: ${{ secrets.WORKER_SECRET_ADMIN_TOKEN }}
       WORKER_SECRET_CLERK_WEBHOOK_SIGNING_SECRET: ${{ secrets.WORKER_SECRET_CLERK_WEBHOOK_SIGNING_SECRET }}
       WORKER_SECRET_CLERK_SECRET_KEY: ${{ secrets.WORKER_SECRET_CLERK_SECRET_KEY }}
+      WORKER_SECRET_RAZORPAY_KEY_ID: ${{ secrets.WORKER_SECRET_RAZORPAY_KEY_ID }}
+      WORKER_SECRET_RAZORPAY_KEY_SECRET: ${{ secrets.WORKER_SECRET_RAZORPAY_KEY_SECRET }}
     steps:
       # `runner` is not a valid context in job-level `env`, so the path is
       # resolved here instead. First step, so the `if: always()` cleanup below
@@ -99,7 +101,9 @@ jobs:
           node -e 'const { writeFileSync } = require("node:fs");
           const secrets = { ADMIN_TOKEN: process.env.WORKER_SECRET_ADMIN_TOKEN,
           CLERK_WEBHOOK_SIGNING_SECRET: process.env.WORKER_SECRET_CLERK_WEBHOOK_SIGNING_SECRET,
-          CLERK_SECRET_KEY: process.env.WORKER_SECRET_CLERK_SECRET_KEY };
+          CLERK_SECRET_KEY: process.env.WORKER_SECRET_CLERK_SECRET_KEY,
+          RAZORPAY_KEY_ID: process.env.WORKER_SECRET_RAZORPAY_KEY_ID,
+          RAZORPAY_KEY_SECRET: process.env.WORKER_SECRET_RAZORPAY_KEY_SECRET };
           const missing = Object.entries(secrets).filter(([, value]) => !value).map(([name]) => name);
           if (missing.length) throw new Error(`Missing required Worker secrets: ${missing.join(", ")}`);
           writeFileSync(process.env.WORKER_SECRETS_FILE, JSON.stringify(secrets), { mode: 0o600 });'

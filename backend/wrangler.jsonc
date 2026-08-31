@@ -26,7 +26,11 @@
       "ADMIN_TOKEN",
       "CLERK_WEBHOOK_SIGNING_SECRET",
       // Fetches Clerk's JWKS, which is what verifies a session token.
-      "CLERK_SECRET_KEY"
+      "CLERK_SECRET_KEY",
+      // Authenticates the Razorpay Orders/Refunds calls and verifies the
+      // Checkout callback signature.
+      "RAZORPAY_KEY_ID",
+      "RAZORPAY_KEY_SECRET"
     ]
   },
   "vars": {
