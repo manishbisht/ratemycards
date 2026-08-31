@@ -76,6 +76,14 @@ verificationRoutes.post('/', requireUser, async (c) => {
     throw ApiError.validation([`No payment networks are on file for '${card.name}'.`])
   }
 
+  const iins = networks.flatMap((n) => n.bins)
+  if (iins.length === 0) {
+    // Nothing to narrow Checkout to. Without prefixes the modal would offer
+    // every card on the network, so a match would prove only "some card on
+    // this network", which is not what a verification claims.
+    throw ApiError.validation([`No BIN prefixes are on file for '${card.name}'.`])
+  }
+
   const attemptId = crypto.randomUUID().replaceAll('-', '')
   const order = await createOrder(keys, {
     amount: MIN_AMOUNT,
@@ -103,7 +111,7 @@ verificationRoutes.post('/', requireUser, async (c) => {
     cardName: card.name,
     issuer: card.issuer,
     allowed: {
-      iins: networks.flatMap((n) => n.bins),
+      iins,
       networks: networks.map((n) => n.network),
     },
   }

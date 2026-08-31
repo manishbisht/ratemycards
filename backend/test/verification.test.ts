@@ -73,6 +73,19 @@ async function json(res: Response) {
 }
 
 /**
+ * A prefix that satisfies each network's seeded glob rule (migration 0010),
+ * so `freshCard` can hand the write path a BIN the admin validation actually
+ * accepts rather than an arbitrary digit string.
+ */
+const SAMPLE_BIN: Record<string, string> = {
+  visa: '411111',
+  mastercard: '511111',
+  amex: '341111',
+  diners: '361111',
+  rupay: '650000',
+}
+
+/**
  * A brand new card, held by the caller and on `networks`.
  *
  * Every test that verifies needs its own: a card can only be proved once, so
@@ -87,7 +100,10 @@ async function freshCard(name: string, networks: string[] = ['visa']): Promise<s
         bankId,
         name,
         country: 'IN',
-        networks: networks.map((code) => ({ code, bins: [] })),
+        // A real prefix, not []: starting a verification now requires one (see
+        // the "no BIN prefixes" rejection below), and these cards exist to be
+        // walked through a verification.
+        networks: networks.map((code) => ({ code, bins: [SAMPLE_BIN[code] ?? '411111'] })),
       }),
     }),
   )
@@ -301,15 +317,13 @@ describe('POST /v1/verifications', () => {
     expect(text).not.toContain(KEY_SECRET)
   })
 
-  it('hands back an empty BIN list when the card has no prefixes on file', async () => {
-    const body = await json(
-      await SELF.fetch(
-        `${base}/v1/verifications`,
-        as(token, { method: 'POST', body: JSON.stringify({ cardId: rupayCard }) }),
-      ),
+  it('refuses a card with networks but no BIN prefixes on file', async () => {
+    const res = await SELF.fetch(
+      `${base}/v1/verifications`,
+      as(token, { method: 'POST', body: JSON.stringify({ cardId: rupayCard }) }),
     )
-    expect(body.allowed.iins).toEqual([])
-    expect(body.allowed.networks).toEqual(['rupay'])
+    expect(res.status).toBe(400)
+    expect((await json(res)).error.details[0]).toMatch(/No BIN prefixes are on file/)
   })
 
   it('refuses a card with no networks at all -- there is nothing to match', async () => {
@@ -348,7 +362,11 @@ describe('POST /v1/verifications/:id/confirm', () => {
   })
 
   it('leaves an uncaptured payment to void rather than refunding it', async () => {
-    const { body } = await verifyWith(rupayCard, 'pay_card_rupay_authorized')
+    // Not the shared rupayCard: that one is deliberately bin-less, to be the
+    // fixture for the "no BIN prefixes" rejection above, and can no longer
+    // start a verification at all.
+    const cardId = await freshCard('Probe Void', ['rupay'])
+    const { body } = await verifyWith(cardId, 'pay_card_rupay_authorized')
     expect(body.status).toBe('verified')
     expect(body.releaseState).toBe('voided')
   })
@@ -479,7 +497,12 @@ describe('POST /v1/verifications/:id/confirm', () => {
         await SELF.fetch(`${base}/v1/cards`, {
           method: 'POST',
           headers: ADMIN,
-          body: JSON.stringify({ bankId, name, country: 'IN', networks: [{ code: 'visa', bins: [] }] }),
+          body: JSON.stringify({
+            bankId,
+            name,
+            country: 'IN',
+            networks: [{ code: 'visa', bins: ['411111'] }],
+          }),
         }),
       )
       await SELF.fetch(`${base}/v1/wallet/cards/${c.id}`, as(token, { method: 'PUT' }))
