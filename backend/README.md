@@ -11,10 +11,12 @@ repo root pins it; run `nvm use`.
 | Module | Path | Owns |
 | ------ | ---- | ----- |
 | banks   | `src/modules/banks/` | `banks` — card issuers |
-| cards   | `src/modules/cards/` | `cards` — the catalog of supported cards |
+| cards   | `src/modules/cards/` | `cards`, `card_networks`, `card_bins` — the catalog of supported cards |
+| networks | `src/modules/networks/` | `networks`, `network_bin_rules` — the payment networks a card can run on, and the BIN prefix rules each allocates under |
 | scoring | `src/modules/scoring/` | `scoring_criteria`, `card_scores` — the rubric |
 | wallet  | `src/modules/wallet/` | `wallet_cards` — which cards a signed-in person holds |
 | users   | `src/modules/users/` | `users` — who is behind a session |
+| verification | `src/modules/verification/` | `card_verifications` — the ₹1 proof that a card is really held |
 
 A bank has many cards (`cards.bank_id`). A card is scored 0–10 against each
 scoring criterion (`card_scores`), and its rating is derived from those.
@@ -98,7 +100,7 @@ Reads are public. Writes need `Authorization: Bearer $ADMIN_TOKEN`.
 | `POST` | `/v1/criteria` | admin — mints the id and creates the criterion |
 | `PATCH` | `/v1/criteria/:id` | admin — partial update, including `weight` |
 | `DELETE` | `/v1/criteria/:id` | admin — soft delete; drops out of every rating |
-| `GET` | `/v1/cards` | `q`, `bankId`, `country`, `maxAnnualFee`, `ids`, `limit` (≤100), `offset`, `includeInactive` |
+| `GET` | `/v1/cards` | `q`, `bankId`, `country`, `network`, `maxAnnualFee`, `ids`, `limit` (≤100), `offset`, `includeInactive` |
 | `GET` | `/v1/cards/:id/scores` | admin — the card's score breakdown and rating |
 | `PUT` | `/v1/cards/:id/scores` | admin — replaces the whole score set |
 | `POST` | `/v1/wallet/preview` | scores a set of cards; stores nothing |
@@ -113,6 +115,8 @@ Reads are public. Writes need `Authorization: Bearer $ADMIN_TOKEN`.
 | `PUT` | `/v1/wallet/cards/:cardId` | session — add, idempotent |
 | `PATCH` | `/v1/wallet/cards/:cardId` | session — record a verification status |
 | `DELETE` | `/v1/wallet/cards/:cardId` | session — remove, idempotent, 204 |
+| `POST` | `/v1/verifications` | session — mints the ₹1 order and the BIN list for one card |
+| `POST` | `/v1/verifications/:id/confirm` | session — checks the payment, then releases it |
 
 Lists return `{ "data": [...], "total": n }` where `total` ignores pagination.
 Single reads return the card bare. Every failure returns
@@ -126,8 +130,9 @@ from ones created over the API — which also means **ids differ between
 environments**. Look rows up by name, never by a hardcoded id.
 
 The migrations seed **12 issuers and 100 Indian cards** with their published
-joining and annual fees, the 7-criterion rubric below, and an opening score for
-every card against every criterion (700 scores).
+joining and annual fees, the 7-criterion rubric below, an opening score for
+every card against every criterion (700 scores), and each card's payment
+networks (114 pairs) with 99 BIN prefixes across 33 of them.
 
 ⚠️ **The seeded scores are editorial judgements, not published figures.** Card
 benefits move constantly, so treat them as a starting position and revise over
@@ -232,8 +237,252 @@ PUT /v1/cards/:id/scores
 It replaces rather than merges, so repeated calls cannot accumulate duplicates,
 and `{ "scores": [] }` clears the card.
 
-Networks (Visa / Mastercard / RuPay and their variants) are not modelled yet;
-they arrive in a later migration.
+## Networks and BINs
+
+A payment network is a row, not an enum. Four tables, all in `0009`:
+
+| table | holds |
+|---|---|
+| `networks` | `id`, `code` (`'visa'`), `name`, `is_active` |
+| `network_bin_rules` | the ISO/IEC 7812 prefix rules each network allocates under |
+| `card_networks` | the `(card_id, network_id)` pair |
+| `card_bins` | the prefixes hanging off one pair |
+
+A card sold as both a Visa and a Mastercard has a row per variant, and each
+variant has its own prefixes.
+
+`code` is what the API speaks, in both directions. `network_id` never leaves the
+server.
+
+### Managing them
+
+`/v1/networks` is **admin-only throughout, reads included** — which departs from
+`/v1/banks` and `/v1/cards`, where `GET` is public. Nothing public consumes it:
+the frontend calls only `/v1/cards`, `/v1/wallet*` and `/v1/verifications*`, and
+no screen shows a network. Publishing it later is a one-line change; retracting
+it once a client depends on it is not.
+
+```
+GET    /v1/networks       ?q= ?includeInactive= ?limit= ?offset=
+GET    /v1/networks/:id
+POST   /v1/networks       { code, name, binRules, isActive? }
+PATCH  /v1/networks/:id
+DELETE /v1/networks/:id   soft delete
+```
+
+`binRules` is `[{ kind: 'glob' | 'range', value }]`. A `glob` is SQLite GLOB
+syntax restricted to digits, `[`, `]`, `-` and `*` (`'4*'`, `'5[1-5]*'`); a
+`range` is two four-digit inclusive bounds compared against the prefix's first
+four digits (`'2221-2720'`). `POST` requires at least one rule — a network with
+none is one no BIN can be added under. `PATCH` replaces the whole set, like
+`PUT /v1/cards/:id/scores`; omitting it leaves the rules alone and `[]` clears
+them.
+
+A soft-deleted network keeps its `card_networks` rows and keeps working as a
+`?network=` filter value. What changes is that card writes reject it.
+
+### Writing a card's networks and BINs
+
+Both in one call, so an admin creates a complete card at once:
+
+```
+PATCH /v1/cards/:id
+{
+  "networks": [
+    { "code": "visa",       "bins": ["412345", "45678901"] },
+    { "code": "mastercard", "bins": ["521234"] }
+  ]
+}
+```
+
+This replaces the card's whole network **and** BIN set rather than merging.
+Omitting `networks` leaves both untouched. `networks: []` means "on no networks"
+and clears both — the way back for a card entered wrong. A network with `bins:
+[]` is a real state: the card runs on it, but no prefix is on file, so the card
+is not selectable.
+
+There is no 409 for dropping a network that still has BINs. The caller states
+both halves, so there is no unmentioned data to protect.
+
+### Why the prefix rules are not a CHECK
+
+They were, in the first draft of `0009`: the whole ISO/IEC 7812 table in one
+constraint on `card_bins`, in the one place no write path could bypass. That
+stops working the moment networks are rows an admin can add, because a `CHECK`
+cannot subquery a table. The rules moved to `network_bin_rules`, enforced by
+`modules/networks/binRules.ts` via `cards/validate.ts`.
+
+A glob is validated for **structure**, not merely for which characters it may
+contain. `GLOB_SHAPE` in `binRules.ts` admits digits, `*`, and character classes
+holding digits and ascending digit ranges — nothing else. That is what makes
+translating a glob straight into a `RegExp` safe.
+
+The alphabet alone was not enough, and the gap was not hypothetical. `4[` and
+`4[9-0]*` pass a character-set test and then throw at `RegExp` construction.
+`4[]5]*` is worse: it passes and does *not* throw. SQLite `GLOB` reads a `]`
+immediately after `[` as a literal class member, so that pattern matches real
+prefixes — while JavaScript reads `[]` as an empty class that matches nothing at
+all. A rule that silently never fires is harder to notice than a crash.
+
+`GLOB_SHAPE` is therefore deliberately **stricter** than the `CHECK` on
+`network_bin_rules`. SQLite `GLOB` cannot express well-formedness, so this is the
+one place the project's "validator mirrors the constraint" rule does not hold: the
+constraint is a coarse character backstop, and `isBinRuleValue` is the real gate.
+Do not loosen it to restore the symmetry.
+
+### Cards with no BINs are not selectable
+
+`GET /v1/cards` hides them. The rule is **discovery-scoped, not
+resolution-scoped**:
+
+| request | gated |
+|---|---|
+| `GET /v1/cards` — browse, search | yes |
+| `GET /v1/cards?ids=…` | no |
+| `GET /v1/cards/:id` | no |
+| `GET /v1/cards?includeUnselectable=true` | no |
+| `getWallet`, `POST /v1/wallet/preview`, `knownCardIds` | no |
+
+`?includeUnselectable=true` requires no authentication. It exposes nothing
+secret — card names are public, and BIN prefixes are still never serialised onto
+a card — but the admin panel needs it because a card must be findable to be
+fixed.
+
+The carve-out is not a convenience. Three call sites resolve wallets through
+`listCards({ ids })` — `getWallet`, `POST /v1/wallet/preview`, and
+`knownCardIds` — so gating them would drop held cards out of a wallet and change
+its score. The prune listener in `frontend/src/store/store.ts` then deletes any
+picked card the catalog stops returning, permanently, from the browser's persisted
+copy.
+
+Note what the `ids` carve-out does **not** cover. It bypasses the BIN gate only,
+never `is_active`: a card whose bank was deactivated does not resolve by `ids`
+alone. Wallet resolution survives that because those same three call sites also
+pass `includeInactive: true`. Both flags carry weight independently, and dropping
+either one would eat wallets.
+
+Only 33 of the 100 seeded cards have BIN rows, so the browse catalog is 33 cards
+until an admin backfills the rest. Wallets already holding the other 67 keep
+them, keep their verification status, and keep scoring.
+
+`GET /v1/cards?includeInactive=true` also now reveals cards whose *bank* was
+deactivated. Before this, `buildWhere` checked `c.is_active` but never
+`b.is_active`, so removing a bank left all its cards in the catalog.
+
+### Who reads the prefixes
+
+`cards.listCardNetworks` is the one door: a card's networks with the prefixes
+behind each, built for the verification flow and never serialised onto a card.
+There is no `GET /v1/cards/:id/bins` and deliberately so — the only caller that
+needs prefixes is `POST /v1/verifications`, which hands out just the one card's
+list so Checkout can narrow to it.
+
+That list does reach the browser, which is unavoidable: Checkout is configured
+client-side. It does not weaken anything, because knowing the accepted prefixes
+is not what passes verification — you still need a real card from that issuer and
+network, and the check runs server-side against Razorpay's account of the
+payment. What would be unsafe is publishing prefixes on the card itself and then
+trusting a client-submitted BIN; that is the design this avoids.
+
+### How much a BIN actually tells you
+
+The leading digits of a card number are the IIN (ISO/IEC 7812), universally
+called the BIN. The first digit is the Major Industry Identifier — which is why
+every Visa starts `4` and every Amex `34` or `37` — and digits 1–8 are the block
+the network allocated to one issuer, sub-allocated by that issuer per funding
+type and product tier.
+
+Two consequences worth knowing before building on this:
+
+- **A BIN identifies issuer + network + tier, not a product.** No public dataset
+  resolves "which rewards card". So `card_bins` holds the prefixes of the tier
+  block the product belongs to — a *superset*. Matching one proves the issuer,
+  network and tier; it does not prove the specific card. Two cards in a tier
+  share prefixes, which is why there is no `UNIQUE` on `bin_prefix`.
+- **Prefix → network is ambiguous.** `65` is both RuPay and Discover, `81` both
+  RuPay and UnionPay. Consult the join from `card_networks` to `networks`; do
+  not infer.
+
+Coverage is partial on purpose: 33 of the 100 seeded cards have BIN rows. A tier
+block wider than 8 prefixes is left out, because SBI's 25 Visa Platinum prefixes
+shared across most of the portfolio assert nothing about any one card. Prefixes
+are real, from the open dataset at `github.com/venelinkochev/bin-list-data`; the
+network-to-card assignments are editorial, like the fees in `0005`.
+
+## Card verification
+
+Holding a card is not something an API can be told, only shown. So a card is
+proved by authorising **₹1** on it through Razorpay Standard Checkout and giving
+it straight back. Two calls with the Checkout modal in between:
+
+```
+POST /v1/verifications            { "cardId": "card_…" }
+→ 201 { "verificationId": "ver_…", "keyId": "rzp_test_…",
+        "orderId": "order_…", "amount": 100, "currency": "INR",
+        "cardName": "Infinia Metal", "issuer": "HDFC",
+        "allowed": { "iins": ["417410","436152","437546"], "networks": ["visa"] } }
+
+  (browser opens Checkout, person pays with their real card)
+
+POST /v1/verifications/:id/confirm
+     { "razorpay_payment_id": "pay_…", "razorpay_order_id": "order_…",
+       "razorpay_signature": "…" }
+→ 200 { "status": "verified", "releaseState": "voided",
+        "card": { "network": "Visa", "last4": "4321", … } }
+→ 422 { "status": "mismatched", "reason": "network_mismatch:mastercard", … }
+```
+
+`allowed.iins` narrows the Checkout modal to this card's own plastic. **It is not
+the check.** That options object is assembled in the browser and can be edited
+there, so `confirm` re-reads the payment from Razorpay and decides from that.
+
+### What confirm actually verifies
+
+1. **The signature** — HMAC-SHA256 of `<order_id>|<payment_id>` keyed with the
+   key secret. Without it anyone could POST an order/payment pair, since the
+   browser is told both.
+2. **The order** — the callback's order id, and Razorpay's own record of which
+   order the payment settled against, must both match the attempt.
+3. **The card** — `GET /v1/payments/:id/card`, and its `network` must be one the
+   card is on.
+
+Only the network is enforced, and that is a real limit worth knowing: **Razorpay
+never reports the card's BIN.** The payment's card entity carries `last4`,
+`network`, `type` and `issuer`, nothing more. A BIN only resolves issuer +
+network + tier anyway (see `0009`), so verification is honest at exactly the
+resolution the data has — "this is a Visa credit card from this issuer", never
+"this is specifically an Infinia". `issuer` is recorded but not enforced:
+Razorpay reports 4-character bank codes (`UTIB` for Axis) and mapping those onto
+the catalog's twelve bank names is a table that does not exist yet, so enforcing
+it on a guess would reject real cards.
+
+### Where the money goes
+
+Orders are created with `payment_capture: 0`, so the rupee is **authorised and
+never captured**. Razorpay voids an uncaptured authorisation within 3–5 days and
+an uncaptured payment attracts no MDR — that is the cheap path, recorded as
+`releaseState: "voided"`. An account configured to auto-capture overrides this;
+the payment then arrives captured and the only way back is an explicit refund,
+recorded as `"refunded"`. Their docs are explicit that *fees charged for a
+captured payment are not reversed*, so that path costs the MDR per verification.
+Worth confirming the fee treatment of the uncaptured path with Razorpay support
+before relying on it in production.
+
+The rupee is released whether the card matched or not — a mismatch is not a
+reason to keep someone's money.
+
+### Replay protection
+
+`card_verifications.razorpay_payment_id` carries a UNIQUE index. Without it one
+successful rupee could be replayed against every card in the catalog; with it,
+one payment verifies one card, once, and a second attempt is a 409.
+
+### Not built yet
+
+There is **no Razorpay webhook**. If someone closes the tab between paying and
+confirming, the attempt stays `created` and the ₹1 auto-voids in a few days —
+the card simply is not verified and can be retried. A webhook on
+`payment.authorized` would settle those; it is the obvious next piece.
 
 ## Wallets
 
@@ -269,11 +518,12 @@ whatever the account already held: a card already on the server keeps the
 verification it earned, so a fresh device cannot downgrade it. After that the
 client writes through on every change, and the server is the source of truth.
 
-Verification status is recorded, not decided. The ₹1-authorisation flow still
-runs in the browser, so `PATCH /v1/wallet/cards/:cardId` takes the caller's word
-for their own wallet — a trust gap that closes when that flow moves server-side.
-The `verified_at` timestamp is the server's to set, and a CHECK constraint keeps
-it absent for every status but `verified`.
+**That trust gap is closed.** `PATCH /v1/wallet/cards/:cardId` now refuses
+`status: "verified"` with a 400 — a card becomes verified only by completing the
+Razorpay flow below, which checks a real payment. The other three statuses stay
+writable: they are the client reporting what it saw, and none of them grants
+anything. The `verified_at` timestamp is still the server's to set, and a CHECK
+constraint keeps it absent for every status but `verified`.
 
 For a signed-in caller, each card from `GET /v1/cards` also carries a `wallet`
 block — `inWallet`, `verificationStatus`, `verifiedAt`. It is absent entirely
