@@ -48,10 +48,12 @@ async function resolveUser(c: Context<AppEnv>, token: string): Promise<AuthUser>
       // other Clerk app on the same instance would verify here.
       authorizedParties: c.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim()),
     })
-  } catch {
+  } catch (err) {
     // The reason is deliberately not echoed back: expired, malformed and
-    // wrong-issuer are all "sign in again" to a client, and the detail is
-    // better in logs than in a response.
+    // wrong-issuer are all "sign in again" to a client. It does go to the logs,
+    // though -- without this line a misconfigured secret key and an ordinary
+    // expired token are the same opaque 401, which is a bad afternoon.
+    console.error('Session token rejected', err)
     throw ApiError.unauthorized('A valid session token is required.')
   }
 
