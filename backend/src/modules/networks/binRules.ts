@@ -24,17 +24,44 @@ export function isBinRuleKind(value: unknown): value is BinRuleKind {
 }
 
 /**
- * A glob may hold only digits, '[', ']', '-' and '*'. Mirrors the CHECK on
- * network_bin_rules -- change one, change the other -- and it is what makes
- * globToRegExp below safe: no regex metacharacter can reach it.
+ * A well-formed glob: digits, '*', and character classes holding digits and
+ * digit ranges. This checks STRUCTURE, not just the alphabet, and the
+ * difference matters more than it looks.
+ *
+ * An alphabet-only check admits '4[' and '4[9-0]*', which throw at RegExp
+ * construction, and admits '4[]5]*', which is worse: SQLite GLOB reads a ']'
+ * straight after '[' as a literal class member, so that glob matches real
+ * prefixes -- but JS reads '[]' as an empty class, so the regex silently
+ * matches nothing at all. No exception, just a rule that never fires.
+ *
+ * This is deliberately STRICTER than the CHECK on network_bin_rules in
+ * migration 0009, which is a character-set test. SQLite GLOB cannot express
+ * well-formedness, so this is the one place the project's
+ * "validator mirrors the constraint" rule does not hold. Do not "fix" the
+ * asymmetry by loosening this -- the constraint is the coarse backstop and
+ * this is the real gate.
  */
-const GLOB_ALPHABET = /^[0-9[\]\-*]+$/
+const GLOB_SHAPE = /^(?:[0-9]|\*|\[(?:[0-9]-[0-9]|[0-9])+\])+$/
+
+/**
+ * Shape alone still admits a descending range like '[9-0]', which throws
+ * 'Range out of order'. GLOB_SHAPE guarantees a '-' only ever sits between two
+ * digits inside a class, so scanning the whole string is safe.
+ */
+function isWellFormedGlob(value: string): boolean {
+  if (!GLOB_SHAPE.test(value)) return false
+
+  for (const match of value.matchAll(/([0-9])-([0-9])/g)) {
+    if (Number(match[1]) > Number(match[2])) return false
+  }
+  return true
+}
 
 /** Two 4-digit bounds, low first. */
 const RANGE_SHAPE = /^(\d{4})-(\d{4})$/
 
 export function isBinRuleValue(kind: BinRuleKind, value: string): boolean {
-  if (kind === 'glob') return GLOB_ALPHABET.test(value)
+  if (kind === 'glob') return isWellFormedGlob(value)
 
   const match = RANGE_SHAPE.exec(value)
   return match !== null && Number(match[1]) <= Number(match[2])

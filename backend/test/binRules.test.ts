@@ -73,6 +73,13 @@ describe('matchesBinRules', () => {
       expect(matchesBinRules(prefix, [rule]), `${rule.value} vs ${prefix}`).toBe(true)
     }
   })
+
+  it('never throws for a rule isBinRuleValue accepted', () => {
+    for (const value of ['4*', '5[1-5]*', '30[0-5]*', '64[4-9]*', '6011*']) {
+      expect(isBinRuleValue('glob', value), value).toBe(true)
+      expect(() => matchesBinRules('412345', [{ kind: 'glob', value }])).not.toThrow()
+    }
+  })
 })
 
 describe('isBinRuleValue', () => {
@@ -98,5 +105,45 @@ describe('isBinRuleValue', () => {
     expect(isBinRuleValue('range', '2221_2720')).toBe(false)
     expect(isBinRuleValue('range', 'abcd-efgh')).toBe(false)
     expect(isBinRuleValue('range', '2720-2221')).toBe(false)
+  })
+
+  it('accepts every glob the launch catalog actually seeds', () => {
+    for (const value of [
+      '4*', '5[1-5]*', '3[47]*', '3[68]*', '30[0-5]*', '6[05]*', '8[12]*',
+      '508*', '6011*', '64[4-9]*', '65*', '62*', '81*',
+    ]) {
+      expect(isBinRuleValue('glob', value), value).toBe(true)
+    }
+  })
+
+  /**
+   * Alphabet-valid but structurally broken. Each of these would reach
+   * new RegExp() under an alphabet-only check and throw.
+   */
+  it('rejects a malformed class that would throw at RegExp construction', () => {
+    for (const value of ['4[', '4[0', '4[-', '][4', '4[15', '4]', '']) {
+      expect(isBinRuleValue('glob', value), value).toBe(false)
+    }
+  })
+
+  it('rejects a descending range, which throws Range out of order', () => {
+    expect(isBinRuleValue('glob', '4[9-0]*')).toBe(false)
+    expect(isBinRuleValue('glob', '5[9-0]*')).toBe(false)
+  })
+
+  /**
+   * The quiet one. ']' first in a class is a literal member in SQLite GLOB but
+   * makes an empty, unsatisfiable class in JS -- no throw, just a rule that
+   * never matches. An empty class and a nested '[' go the same way.
+   */
+  it('rejects a class JS and SQLite would read differently', () => {
+    for (const value of ['4[]5]*', '4[]', '4[[0-9]']) {
+      expect(isBinRuleValue('glob', value), value).toBe(false)
+    }
+  })
+
+  it('rejects a dash outside a character class', () => {
+    expect(isBinRuleValue('glob', '4-*')).toBe(false)
+    expect(isBinRuleValue('glob', '-4*')).toBe(false)
   })
 })
