@@ -36,7 +36,9 @@
 -- A tier block wider than 8 prefixes is left out entirely -- Visa Platinum at
 -- SBI is 25 prefixes shared by most of the portfolio, so asserting it of one
 -- card says nothing. That is why only 33 of 100 cards have BIN rows. The
--- other 67 fall back to the network prefix rule in the CHECK in 0009.
+-- other 67 have no prefixes on file, which now means they are hidden from
+-- discovery by the BIN gate in cards/queries.ts and cannot start a
+-- verification at all.
 
 -- The networks themselves, and the ISO/IEC 7812 prefix rules each allocates
 -- under. Transcribed unchanged in meaning from the single CHECK an earlier
@@ -208,9 +210,18 @@ JOIN networks nw ON nw.code = n.network
 JOIN banks b ON b.name = n.bank
 JOIN cards c ON c.bank_id = b.id AND c.name = n.card;
 
--- Every prefix below already satisfies the network/prefix CHECK in 0009; the
--- generator that produced this file applied the same rule, and the constraint
--- is the backstop that keeps it true.
+-- Every prefix below satisfies its network's rule in network_bin_rules, and
+-- that was verified by query when this file was written -- not by a
+-- constraint. There is no backstop here: a CHECK cannot subquery
+-- network_bin_rules, so a hand-authored seed row is checked by nobody. If you
+-- add prefixes in a later migration, verify them yourself:
+--
+--   SELECT cb.bin_prefix, nw.code FROM card_bins cb
+--   JOIN networks nw ON nw.id = cb.network_id
+--   WHERE NOT EXISTS (SELECT 1 FROM network_bin_rules r
+--                     WHERE r.network_id = cb.network_id
+--                       AND (cb.bin_prefix GLOB r.value
+--                            OR (r.kind = 'range' AND ...)));
 INSERT INTO card_bins (card_id, network_id, bin_prefix)
 WITH bins(bank, card, network, bin_prefix) AS (
   VALUES

@@ -66,9 +66,15 @@ CREATE TABLE network_bin_rules (
   -- A row IS the rule; there is nothing else to address it by.
   PRIMARY KEY (network_id, kind, value),
   CHECK (kind IN ('glob', 'range')),
-  -- A glob may contain only digits, '[', ']', '-' and '*'. This constraint is
-  -- what makes translating it straight to a RegExp in binRules.ts safe: no
-  -- regex metacharacter survives it. Verified against every glob this
+  -- A glob may contain only digits, '[', ']', '-' and '*'. That is an alphabet
+  -- test, not a well-formedness test, and it is deliberately the looser half of
+  -- a pair: this CHECK admits '4[0*' and '[0-9', which would throw at RegExp
+  -- construction, and '4[]5]*', which SQLite GLOB and JavaScript read
+  -- differently. isBinRuleValue in modules/networks/binRules.ts is the real
+  -- gate -- it validates structure, and it is stricter than this. SQLite GLOB
+  -- cannot express well-formedness, so this is the one place the project's
+  -- "validator mirrors the constraint" rule does not hold. Do not loosen
+  -- isBinRuleValue to restore the symmetry. Verified against every glob this
   -- migration's predecessor used, and against '4|5*', '4^5*', '4$*', '4+*',
   -- '4.*', '4\d*', '4(a)*' and '4 *', all rejected.
   CHECK (kind = 'range' OR NOT value GLOB '*[^]0-9[*-]*'),
