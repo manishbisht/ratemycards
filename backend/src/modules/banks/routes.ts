@@ -36,6 +36,7 @@ bankRoutes.get('/:id/cards', async (c) => {
   const { cards, total } = await listCards(c.env.DB, {
     bankId: id,
     includeInactive: parseBool(c.req.query('includeInactive')),
+    includeUnselectable: parseBool(c.req.query('includeUnselectable')),
     limit: parseLimit(c.req.query('limit')),
     offset: parseOffset(c.req.query('offset')),
   })

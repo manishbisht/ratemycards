@@ -108,7 +108,12 @@ function buildWhere(f: CardFilters): { clause: string; binds: unknown[] } {
   const conds: string[] = []
   const binds: unknown[] = []
 
-  if (!f.includeInactive) conds.push('c.is_active = 1')
+  if (!f.includeInactive) {
+    conds.push('c.is_active = 1')
+    // A retired issuer takes its cards with it. Without this, deactivating a
+    // bank left every one of its cards in the catalog.
+    conds.push('b.is_active = 1')
+  }
 
   if (f.q) {
     // Searches the card name and the issuing bank's name.
@@ -141,6 +146,20 @@ function buildWhere(f: CardFilters): { clause: string; binds: unknown[] } {
   if (f.ids) {
     conds.push(`c.id IN (${placeholders(f.ids.length)})`)
     binds.push(...f.ids)
+  }
+
+  /*
+   * A card with no BIN prefixes cannot be verified, so it is not offered.
+   *
+   * Discovery-scoped, and the `!f.ids` is the whole point: an explicit ids=
+   * lookup is resolving cards someone already holds, and three call sites do
+   * exactly that -- getWallet, /wallet/preview and knownCardIds. Gating them
+   * would drop held cards from a wallet and change its score, and the prune
+   * listener in frontend/src/store/store.ts would then delete them from the
+   * browser's copy for good.
+   */
+  if (!f.includeUnselectable && !f.ids) {
+    conds.push('EXISTS (SELECT 1 FROM card_bins cb WHERE cb.card_id = c.id)')
   }
 
   return { clause: conds.length ? `WHERE ${conds.join(' AND ')}` : '', binds }

@@ -35,6 +35,7 @@ cardRoutes.get('/', optionalUser, async (c) => {
     maxAnnualFee: parseNonNegativeInt(c.req.query('maxAnnualFee')),
     ids: parseIds(c.req.query('ids')),
     includeInactive: parseBool(c.req.query('includeInactive')),
+    includeUnselectable: parseBool(c.req.query('includeUnselectable')),
     limit: parseLimit(c.req.query('limit')),
     offset: parseOffset(c.req.query('offset')),
   }, c.get('user')?.id)

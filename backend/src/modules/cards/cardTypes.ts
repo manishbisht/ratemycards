@@ -118,6 +118,12 @@ export type CardFilters = {
   maxAnnualFee?: number
   ids?: string[]
   includeInactive: boolean
+  /**
+   * Lets a caller see cards with no BIN prefixes, which browse and search hide.
+   * Required rather than optional so every call site states its intent: getting
+   * this wrong takes cards out of people's wallets.
+   */
+  includeUnselectable: boolean
   limit: number
   offset: number
 }

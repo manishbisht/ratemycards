@@ -18,8 +18,15 @@ async function preview(cardIds: string[]) {
   return { res, body: (await res.json()) as any }
 }
 
+/**
+ * includeUnselectable, because this is a lookup by name, not a check of what
+ * browse offers: not every seeded card carries a BIN prefix, and this helper
+ * must still find them.
+ */
 async function cardNamed(name: string) {
-  const res = await SELF.fetch(`${base}/v1/cards?q=${encodeURIComponent(name)}&limit=100`)
+  const res = await SELF.fetch(
+    `${base}/v1/cards?q=${encodeURIComponent(name)}&includeUnselectable=true&limit=100`,
+  )
   const body = (await res.json()) as any
   return body.data.find((card: any) => card.name === name)
 }

@@ -16,8 +16,19 @@ const SEEDED_BANKS = 12
 const SEEDED_CARDS = 100
 const SEEDED_CRITERIA = 7
 
+/**
+ * Every read in this file opts out of the BIN visibility gate.
+ *
+ * This file's subject is the seeded catalog -- its own header calls it the
+ * seed's regression test -- not which cards happen to be offered. Only 33 of
+ * the 100 seeded cards carry BIN prefixes, so without this the gate would
+ * quietly shrink every count here, and cardNamed() would return undefined for
+ * Centurion Charge Card and Tata Neu Infinity, which have none. The gate's own
+ * behaviour is covered by cardsGating.test.ts.
+ */
 async function get(path: string) {
-  const res = await SELF.fetch(`${base}${path}`)
+  const url = `${base}${path}${path.includes('?') ? '&' : '?'}includeUnselectable=true`
+  const res = await SELF.fetch(url)
   return { res, body: (await res.json()) as any }
 }
 
@@ -73,6 +84,13 @@ describe('the seeded catalog', () => {
       .map((card: any) => card.bank.name)
       .sort()
     expect(banks).toEqual(['HDFC', 'SBI'])
+  })
+
+  it('offers only the cards that carry BIN prefixes', async () => {
+    // Bypasses the helper above on purpose, to see the ungated default.
+    const gated = await SELF.fetch(`${base}/v1/cards`)
+    expect(((await gated.json()) as any).total).toBe(33)
+    expect((await get('/v1/cards')).body.total).toBe(SEEDED_CARDS)
   })
 })
 
@@ -450,6 +468,7 @@ describe('query layer directly', () => {
     const result = await listCards(env.DB, {
       ids: [],
       includeInactive: false,
+      includeUnselectable: false,
       limit: 50,
       offset: 0,
     })

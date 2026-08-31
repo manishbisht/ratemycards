@@ -45,6 +45,9 @@ export async function getWallet(db: D1Database, userId: string): Promise<StoredW
   const { cards } = await listCards(db, {
     ids,
     includeInactive: true,
+    // Resolution, not discovery: a card already in a wallet must resolve even
+    // with no BIN prefixes on file.
+    includeUnselectable: true,
     limit: ids.length,
     offset: 0,
   })

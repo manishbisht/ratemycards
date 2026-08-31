@@ -40,6 +40,9 @@ walletRoutes.post('/preview', async (c) => {
   const { cards } = await listCards(c.env.DB, {
     ids,
     includeInactive: true,
+    // Resolution, not discovery: a card already in a wallet must resolve even
+    // with no BIN prefixes on file.
+    includeUnselectable: true,
     limit: ids.length,
     offset: 0,
   })
@@ -129,6 +132,9 @@ async function knownCardIds(db: D1Database, ids: string[]): Promise<string[]> {
   const { cards } = await listCards(db, {
     ids,
     includeInactive: true,
+    // Resolution, not discovery: a card already in a wallet must resolve even
+    // with no BIN prefixes on file.
+    includeUnselectable: true,
     limit: ids.length,
     offset: 0,
   })
