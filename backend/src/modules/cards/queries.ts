@@ -8,8 +8,8 @@ import type {
   CardFilters,
   CardInput,
   CardNetwork,
+  CardNetworkInput,
   CardPatch,
-  NetworkCode,
   RatedCard,
 } from './cardTypes'
 import type { VerificationStatus } from '../wallet/walletTypes'
@@ -221,7 +221,7 @@ export async function listCardNetworks(
        ORDER BY nw.code, cb.bin_prefix`,
     )
     .bind(cardId)
-    .all<{ network: NetworkCode; bin_prefix: string | null }>()
+    .all<{ network: string; bin_prefix: string | null }>()
 
   const networks: CardNetwork[] = []
   for (const row of results) {
@@ -239,42 +239,72 @@ async function requireCard(db: D1Database, id: string): Promise<void> {
 }
 
 /**
- * Replaces a card's whole network set, matching PUT /v1/cards/:id/scores rather
- * than merging: repeated calls cannot accumulate duplicates.
+ * Replaces a card's whole network *and* BIN set, matching PUT
+ * /v1/cards/:id/scores rather than merging: repeated calls cannot accumulate
+ * duplicates.
  *
- * Deleting a network that still has BIN rows trips the composite foreign key in
- * 0009 and is mapped to a 409. That is deliberate -- silently dropping the BINs
- * with it would destroy data the caller never mentioned.
+ * Statement order matters and is not incidental. card_bins has a composite
+ * foreign key onto card_networks, so every BIN goes before its parent can be
+ * removed and after its parent exists:
+ *
+ *   1. delete all the card's BINs        -- frees the FK
+ *   2. delete the networks not being kept
+ *   3. insert the networks               -- parents first
+ *   4. insert the BINs                   -- children second
+ *
+ * Wiping all the BINs in step 1 rather than only the dropped networks' is what
+ * makes this a replace. It also retires the 409 this used to raise: the caller
+ * has stated both halves, so there is no unmentioned data to protect.
  */
 async function replaceNetworks(
   db: D1Database,
   cardId: string,
-  networks: NetworkCode[],
+  networks: CardNetworkInput[],
+  idByCode: Map<string, string>,
 ): Promise<void> {
-  // `NOT IN ()` is not valid SQL, so an empty set drops the clause rather than
-  // emitting it.
-  const keep =
-    networks.length > 0
-      ? `AND network_id NOT IN (SELECT id FROM networks WHERE code IN (${placeholders(networks.length)}))`
-      : ''
+  const ids = networks.map((n) => idByCode.get(n.code)).filter((id): id is string => id !== undefined)
 
-  await db.batch([
-    db.prepare(`DELETE FROM card_networks WHERE card_id = ? ${keep}`).bind(cardId, ...networks),
-    // The card may already be on some of these; the pair is the primary key.
-    // The SELECT is what turns a code into an id, so an unknown code inserts
-    // nothing rather than a bad row -- validate.ts is what reports it.
-    ...networks.map((code) =>
+  // `NOT IN ()` is not valid SQL, so an empty set drops the clause rather than
+  // emitting it -- which is exactly the `networks: []` case.
+  const keep = ids.length > 0 ? `AND network_id NOT IN (${placeholders(ids.length)})` : ''
+
+  const statements = [
+    db.prepare('DELETE FROM card_bins WHERE card_id = ?').bind(cardId),
+    db.prepare(`DELETE FROM card_networks WHERE card_id = ? ${keep}`).bind(cardId, ...ids),
+  ]
+
+  for (const network of networks) {
+    const networkId = idByCode.get(network.code)
+    if (networkId === undefined) continue
+    statements.push(
       db
         .prepare(
-          `INSERT INTO card_networks (card_id, network_id)
-           SELECT ?, id FROM networks WHERE code = ? ON CONFLICT DO NOTHING`,
+          'INSERT INTO card_networks (card_id, network_id) VALUES (?, ?) ON CONFLICT DO NOTHING',
         )
-        .bind(cardId, code),
-    ),
-  ])
+        .bind(cardId, networkId),
+    )
+  }
+
+  for (const network of networks) {
+    const networkId = idByCode.get(network.code)
+    if (networkId === undefined) continue
+    for (const bin of network.bins) {
+      statements.push(
+        db
+          .prepare('INSERT INTO card_bins (card_id, network_id, bin_prefix) VALUES (?, ?, ?)')
+          .bind(cardId, networkId, bin),
+      )
+    }
+  }
+
+  await db.batch(statements)
 }
 
-export async function createCard(db: D1Database, input: CardInput): Promise<RatedCard> {
+export async function createCard(
+  db: D1Database,
+  input: CardInput,
+  idByCode: Map<string, string>,
+): Promise<RatedCard> {
   const id = generateCardId()
 
   try {
@@ -297,12 +327,8 @@ export async function createCard(db: D1Database, input: CardInput): Promise<Rate
     throw mapWriteError(err, input.name)
   }
 
-  if (input.networks && input.networks.length > 0) {
-    try {
-      await replaceNetworks(db, id, input.networks)
-    } catch (err) {
-      throw mapWriteError(err, input.name, true)
-    }
+  if (input.networks !== undefined) {
+    await replaceNetworks(db, id, input.networks, idByCode)
   }
 
   const card = await getCard(db, id)
@@ -314,6 +340,7 @@ export async function updateCard(
   db: D1Database,
   id: string,
   patch: CardPatch,
+  idByCode: Map<string, string>,
 ): Promise<RatedCard> {
   await requireCard(db, id)
 
@@ -341,12 +368,8 @@ export async function updateCard(
     }
   }
 
-  if (patch.networks) {
-    try {
-      await replaceNetworks(db, id, patch.networks)
-    } catch (err) {
-      throw mapWriteError(err, patch.name ?? id, true)
-    }
+  if (patch.networks !== undefined) {
+    await replaceNetworks(db, id, patch.networks, idByCode)
   }
 
   const card = await getCard(db, id)
@@ -365,19 +388,12 @@ export async function deactivateCard(db: D1Database, id: string): Promise<void> 
  * if it slipped past validation. Both constraints are mapped rather than left
  * to surface as a 500.
  */
-function mapWriteError(err: unknown, name: string, networksTouched = false): unknown {
+function mapWriteError(err: unknown, name: string): unknown {
   if (!(err instanceof Error)) return err
   if (/UNIQUE constraint failed/i.test(err.message)) {
     return ApiError.conflict(`That bank already has a card named '${name}'.`)
   }
   if (/FOREIGN KEY constraint failed/i.test(err.message)) {
-    // Two causes now: an unknown bankId on the card row, or dropping a network
-    // that still has BIN prefixes hanging off it.
-    if (networksTouched) {
-      return ApiError.conflict(
-        `Cannot remove a network from '${name}' while BIN prefixes are still on file for it.`,
-      )
-    }
     return ApiError.validation(['bankId does not match a known bank.'])
   }
   return err

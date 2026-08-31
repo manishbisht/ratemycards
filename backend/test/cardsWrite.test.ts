@@ -222,7 +222,7 @@ describe('PATCH /v1/cards/:id', () => {
  * The write path still owns card_networks, but the card it returns says nothing
  * about them -- so these read the table back rather than the response body.
  */
-describe('card networks on write', () => {
+describe('card networks and bins on write', () => {
   /** The network codes the table holds for a card, sorted. */
   async function networksOf(cardId: string): Promise<string[]> {
     const { results } = await env.DB.prepare(
@@ -237,105 +237,214 @@ describe('card networks on write', () => {
     return results.map((row: any) => row.network)
   }
 
-  it('keeps networks off the created card', async () => {
-    const body = await json(await send('POST', '/v1/cards', card({ networks: ['visa'] })))
+  /** `code:prefix` pairs the table holds for a card, sorted. */
+  async function binsOf(cardId: string): Promise<string[]> {
+    const { results } = await env.DB.prepare(
+      `SELECT nw.code AS network, cb.bin_prefix
+       FROM card_bins cb
+       JOIN networks nw ON nw.id = cb.network_id
+       WHERE cb.card_id = ?
+       ORDER BY nw.code, cb.bin_prefix`,
+    )
+      .bind(cardId)
+      .all()
+    return results.map((row: any) => `${row.network}:${row.bin_prefix}`)
+  }
+
+  it('keeps networks and bins off the created card', async () => {
+    const body = await json(
+      await send('POST', '/v1/cards', card({ networks: [{ code: 'visa', bins: ['412345'] }] })),
+    )
     expect(body).not.toHaveProperty('networks')
+    expect(body).not.toHaveProperty('bins')
   })
 
   it('writes nothing when no network is given', async () => {
     const body = await json(await send('POST', '/v1/cards', card()))
     expect(await networksOf(body.id)).toEqual([])
+    expect(await binsOf(body.id)).toEqual([])
   })
 
-  it('stores the networks a card is created with', async () => {
+  it('stores networks and their bins together', async () => {
     const body = await json(
-      await send('POST', '/v1/cards', card({ networks: ['visa', 'mastercard'] })),
+      await send('POST', '/v1/cards', card({
+        networks: [
+          { code: 'visa', bins: ['412345', '45678901'] },
+          { code: 'mastercard', bins: ['521234'] },
+        ],
+      })),
     )
     expect(await networksOf(body.id)).toEqual(['mastercard', 'visa'])
+    expect(await binsOf(body.id)).toEqual([
+      'mastercard:521234',
+      'visa:412345',
+      'visa:45678901',
+    ])
   })
 
-  it('rejects an unknown network', async () => {
-    const res = await send('POST', '/v1/cards', card({ networks: ['switch'] }))
-    expect(res.status).toBe(400)
-    expect((await json(res)).error.details[0]).toMatch(/networks must contain only/)
+  it('accepts a network with no bins, leaving it unselectable', async () => {
+    const body = await json(
+      await send('POST', '/v1/cards', card({ networks: [{ code: 'visa' }] })),
+    )
+    expect(await networksOf(body.id)).toEqual(['visa'])
+    expect(await binsOf(body.id)).toEqual([])
   })
 
-  it('rejects an empty network set', async () => {
-    const res = await send('POST', '/v1/cards', card({ networks: [] }))
-    expect(res.status).toBe(400)
-    expect((await json(res)).error.details[0]).toMatch(/non-empty/)
-  })
-
-  it('rejects a repeated network', async () => {
-    const res = await send('POST', '/v1/cards', card({ networks: ['visa', 'visa'] }))
-    expect(res.status).toBe(400)
-    expect((await json(res)).error.details[0]).toMatch(/must not repeat/)
-  })
-
-  it('rejects a network that is not a string', async () => {
-    const res = await send('POST', '/v1/cards', card({ networks: [4] }))
-    expect(res.status).toBe(400)
-  })
-
-  it('replaces rather than merges on patch', async () => {
-    const created = await json(await send('POST', '/v1/cards', card({ networks: ['visa'] })))
-
-    await send('PATCH', `/v1/cards/${created.id}`, { networks: ['rupay'] })
-    expect(await networksOf(created.id)).toEqual(['rupay'])
-  })
-
-  it('is idempotent: patching the same set twice changes nothing', async () => {
+  it('replaces both networks and bins on patch', async () => {
     const created = await json(
-      await send('POST', '/v1/cards', card({ networks: ['visa', 'amex'] })),
+      await send('POST', '/v1/cards', card({
+        networks: [{ code: 'visa', bins: ['412345'] }],
+      })),
     )
 
-    await send('PATCH', `/v1/cards/${created.id}`, { networks: ['visa', 'amex'] })
-    await send('PATCH', `/v1/cards/${created.id}`, { networks: ['visa', 'amex'] })
-    expect(await networksOf(created.id)).toEqual(['amex', 'visa'])
-  })
-
-  it('accepts a networks-only patch', async () => {
-    const created = await json(await send('POST', '/v1/cards', card()))
-    const res = await send('PATCH', `/v1/cards/${created.id}`, { networks: ['diners'] })
-
+    const res = await send('PATCH', `/v1/cards/${created.id}`, {
+      networks: [{ code: 'rupay', bins: ['652345'] }],
+    })
     expect(res.status).toBe(200)
-    expect(await networksOf(created.id)).toEqual(['diners'])
-  })
-
-  it('keeps the other fields when only networks change', async () => {
-    const created = await json(
-      await send('POST', '/v1/cards', card({ joiningFee: 500, annualFee: 750 })),
-    )
-    const patched = await json(
-      await send('PATCH', `/v1/cards/${created.id}`, { networks: ['visa'] }),
-    )
-    expect(patched.name).toBe(created.name)
-    expect(patched.joiningFee).toBe(500)
-    expect(patched.annualFee).toBe(750)
+    expect(await networksOf(created.id)).toEqual(['rupay'])
+    expect(await binsOf(created.id)).toEqual(['rupay:652345'])
   })
 
   /**
-   * The composite foreign key in 0009. Dropping a network out from under its
-   * BIN prefixes has to fail loudly rather than take the prefixes with it.
+   * The 409 this used to raise is gone. The caller now states networks and
+   * bins in one breath, so replacing legitimately drops both -- there is no
+   * data the caller did not mention.
    */
-  it('refuses to drop a network that still has BIN prefixes', async () => {
-    const created = await json(await send('POST', '/v1/cards', card({ networks: ['visa'] })))
-    await env.DB.prepare(
-      `INSERT INTO card_bins (card_id, network_id, bin_prefix)
-       SELECT ?, id, ? FROM networks WHERE code = ?`,
+  it('drops a network together with its bins rather than 409ing', async () => {
+    const created = await json(
+      await send('POST', '/v1/cards', card({
+        networks: [{ code: 'visa', bins: ['412345'] }],
+      })),
     )
-      .bind(created.id, '412345', 'visa')
-      .run()
 
-    const res = await send('PATCH', `/v1/cards/${created.id}`, { networks: ['rupay'] })
-    expect(res.status).toBe(409)
-    expect((await json(res)).error.message).toMatch(/BIN prefixes are still on file/)
-    // The prefixes, and the network they hang off, both survived the refusal.
+    const res = await send('PATCH', `/v1/cards/${created.id}`, {
+      networks: [{ code: 'rupay', bins: [] }],
+    })
+    expect(res.status).toBe(200)
+    expect(await networksOf(created.id)).toEqual(['rupay'])
+    expect(await binsOf(created.id)).toEqual([])
+  })
+
+  it('clears everything on an explicit empty networks array', async () => {
+    const created = await json(
+      await send('POST', '/v1/cards', card({
+        networks: [{ code: 'visa', bins: ['412345'] }],
+      })),
+    )
+
+    const res = await send('PATCH', `/v1/cards/${created.id}`, { networks: [] })
+    expect(res.status).toBe(200)
+    expect(await networksOf(created.id)).toEqual([])
+    expect(await binsOf(created.id)).toEqual([])
+  })
+
+  it('is idempotent under a repeated patch', async () => {
+    const created = await json(await send('POST', '/v1/cards', card()))
+    const body = { networks: [{ code: 'visa', bins: ['412345'] }] }
+
+    await send('PATCH', `/v1/cards/${created.id}`, body)
+    await send('PATCH', `/v1/cards/${created.id}`, body)
     expect(await networksOf(created.id)).toEqual(['visa'])
+    expect(await binsOf(created.id)).toEqual(['visa:412345'])
+  })
+
+  it('keeps the other fields when only networks change', async () => {
+    const created = await json(await send('POST', '/v1/cards', card({ annualFee: 2500 })))
+    const patched = await json(
+      await send('PATCH', `/v1/cards/${created.id}`, {
+        networks: [{ code: 'visa', bins: ['412345'] }],
+      }),
+    )
+    expect(patched.annualFee).toBe(2500)
+    expect(patched.name).toBe(created.name)
+  })
+
+  it('rejects a bin that does not match its network rules', async () => {
+    const res = await send('POST', '/v1/cards', card({
+      networks: [{ code: 'visa', bins: ['512345'] }],
+    }))
+    expect(res.status).toBe(400)
+    expect((await json(res)).error.details.join(' ')).toMatch(
+      /BIN '512345' is not valid for network 'visa'/,
+    )
+  })
+
+  it('rejects a bin that is not 6 or 8 digits', async () => {
+    const res = await send('POST', '/v1/cards', card({
+      networks: [{ code: 'visa', bins: ['4123'] }],
+    }))
+    expect(res.status).toBe(400)
+    expect((await json(res)).error.details.join(' ')).toMatch(/6 or 8 digits/)
+  })
+
+  it('rejects an unknown network code', async () => {
+    const res = await send('POST', '/v1/cards', card({ networks: [{ code: 'switch' }] }))
+    expect(res.status).toBe(400)
+    expect((await json(res)).error.details.join(' ')).toMatch(/not a known network/)
+  })
+
+  it('rejects an inactive network', async () => {
+    const made = await json(
+      await send('POST', '/v1/networks', {
+        code: 'retirednet',
+        name: 'Retired Net',
+        binRules: [{ kind: 'glob', value: '9*' }],
+      }),
+    )
+    await send('DELETE', `/v1/networks/${made.id}`)
+
+    const res = await send('POST', '/v1/cards', card({
+      networks: [{ code: 'retirednet', bins: ['912345'] }],
+    }))
+    expect(res.status).toBe(400)
+    expect((await json(res)).error.details.join(' ')).toMatch(/is not active/)
+  })
+
+  it('rejects bins on a network with no rules on file', async () => {
+    const made = await json(
+      await send('POST', '/v1/networks', {
+        code: 'rulelessnet',
+        name: 'Ruleless Net',
+        binRules: [{ kind: 'glob', value: '9*' }],
+      }),
+    )
+    await send('PATCH', `/v1/networks/${made.id}`, { binRules: [] })
+
+    const res = await send('POST', '/v1/cards', card({
+      networks: [{ code: 'rulelessnet', bins: ['912345'] }],
+    }))
+    expect(res.status).toBe(400)
+    expect((await json(res)).error.details.join(' ')).toMatch(/has no BIN rules on file/)
+  })
+
+  it('rejects a repeated network', async () => {
+    const res = await send('POST', '/v1/cards', card({
+      networks: [{ code: 'visa', bins: [] }, { code: 'visa', bins: [] }],
+    }))
+    expect(res.status).toBe(400)
+    expect((await json(res)).error.details.join(' ')).toMatch(/listed twice/)
+  })
+
+  it('rejects the same bin under two networks', async () => {
+    const res = await send('POST', '/v1/cards', card({
+      networks: [
+        { code: 'rupay', bins: ['652345'] },
+        { code: 'discover', bins: ['652345'] },
+      ],
+    }))
+    expect(res.status).toBe(400)
+    expect((await json(res)).error.details.join(' ')).toMatch(/more than one network/)
+  })
+
+  it('rejects a network entry that is not an object', async () => {
+    const res = await send('POST', '/v1/cards', card({ networks: ['visa'] }))
+    expect(res.status).toBe(400)
   })
 
   it('lets the database reject a BIN whose digits are not numeric', async () => {
-    const created = await json(await send('POST', '/v1/cards', card({ networks: ['visa'] })))
+    const created = await json(
+      await send('POST', '/v1/cards', card({ networks: [{ code: 'visa', bins: [] }] })),
+    )
     await expect(
       env.DB.prepare(
         `INSERT INTO card_bins (card_id, network_id, bin_prefix)
@@ -348,25 +457,19 @@ describe('card networks on write', () => {
 
   /**
    * What the planned GET /v1/cards/:id/bins has to answer: every prefix for a
-   * card, flattened across all of its networks.
+   * card, flattened across all of its networks. Written through the API now
+   * rather than raw SQL, since one call can carry the whole set.
    */
   it('can flatten every prefix across a card\'s networks', async () => {
     const created = await json(
-      await send('POST', '/v1/cards', card({ networks: ['visa', 'mastercard', 'rupay'] })),
+      await send('POST', '/v1/cards', card({
+        networks: [
+          { code: 'visa', bins: ['412345', '498765'] },
+          { code: 'mastercard', bins: ['521234'] },
+          { code: 'rupay', bins: ['652345'] },
+        ],
+      })),
     )
-    for (const [network, prefix] of [
-      ['visa', '412345'],
-      ['visa', '498765'],
-      ['mastercard', '521234'],
-      ['rupay', '652345'],
-    ]) {
-      await env.DB.prepare(
-        `INSERT INTO card_bins (card_id, network_id, bin_prefix)
-         SELECT ?, id, ? FROM networks WHERE code = ?`,
-      )
-        .bind(created.id, prefix, network)
-        .run()
-    }
 
     const { results } = await env.DB.prepare(
       'SELECT bin_prefix FROM card_bins WHERE card_id = ? ORDER BY bin_prefix',

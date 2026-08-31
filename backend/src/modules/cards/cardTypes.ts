@@ -9,6 +9,35 @@ export function generateCardId(): string {
   return generateId(CARD_ID_PREFIX)
 }
 
+/**
+ * One network a card runs on, with the BIN prefixes that network issues it
+ * under. Internal: never serialised onto a card. `listCardNetworks` builds it
+ * for the verification flow, which needs the prefixes to narrow Checkout.
+ *
+ * `network` is a code ('visa'), not an id -- ids do not leave the server.
+ *
+ * `bins` is a SUPERSET of the product's own prefixes, and often empty -- a
+ * 6-digit BIN identifies issuer + network + tier, not an individual product.
+ */
+export type CardNetwork = {
+  network: string
+  /** 6- or 8-digit IIN prefixes, ascending. Empty when none is on file. */
+  bins: string[]
+}
+
+/**
+ * One network a card is issued on, as an admin writes it: the network's code
+ * and the BIN prefixes to record under it.
+ *
+ * `bins` may be empty or absent. That is a real state -- the card runs on the
+ * network but no prefix is on file -- and it is what makes the card
+ * unselectable, because nothing can verify it.
+ */
+export type CardNetworkInput = {
+  code: string
+  bins: string[]
+}
+
 /** The issuing bank, embedded in a card so a list needs no follow-up request. */
 export type CardBank = {
   id: string
@@ -30,6 +59,12 @@ export type CardWallet = {
  * The public card. Deliberately carries no rating: the rubric, the per-criterion
  * scores, and the 0-10 rating derived from them are internal, and the API only
  * ever exposes them aggregated into a whole wallet's score.
+ *
+ * It carries no networks either. Which networks a card runs on, and the BIN
+ * prefixes behind each, are tracked in `card_networks` / `card_bins` but not
+ * published on the card: the UI does not show them, and a card verification
+ * that checks a BIN cannot be worth anything if the list of accepted BINs is
+ * readable from the catalog. They get their own endpoint instead.
  */
 export type Card = {
   id: string
@@ -64,6 +99,13 @@ export type CardInput = {
   joiningFee: number
   annualFee: number
   isActive?: boolean
+  /**
+   * Replaces the card's whole network *and* BIN set rather than merging into
+   * it, the same contract as PUT /v1/cards/:id/scores. Omitted leaves both
+   * untouched; `[]` clears both, which is how an admin walks back a card they
+   * got wrong.
+   */
+  networks?: CardNetworkInput[]
 }
 
 export type CardPatch = Partial<CardInput>
@@ -71,6 +113,7 @@ export type CardPatch = Partial<CardInput>
 export type CardFilters = {
   q?: string
   bankId?: string
+  network?: string
   country?: string
   maxAnnualFee?: number
   ids?: string[]

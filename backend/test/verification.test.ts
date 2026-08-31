@@ -83,7 +83,12 @@ async function freshCard(name: string, networks: string[] = ['visa']): Promise<s
     await SELF.fetch(`${base}/v1/cards`, {
       method: 'POST',
       headers: ADMIN,
-      body: JSON.stringify({ bankId, name, country: 'IN', networks }),
+      body: JSON.stringify({
+        bankId,
+        name,
+        country: 'IN',
+        networks: networks.map((code) => ({ code, bins: [] })),
+      }),
     }),
   )
   await SELF.fetch(`${base}/v1/wallet/cards/${card.id}`, as(token, { method: 'PUT' }))
@@ -134,7 +139,12 @@ beforeAll(async () => {
         await SELF.fetch(`${base}/v1/cards`, {
           method: 'POST',
           headers: ADMIN,
-          body: JSON.stringify({ bankId, name, country: 'IN', ...(networks ? { networks } : {}) }),
+          body: JSON.stringify({
+            bankId,
+            name,
+            country: 'IN',
+            ...(networks ? { networks: networks.map((code) => ({ code, bins: [] })) } : {}),
+          }),
         }),
       )
     ).id
@@ -469,7 +479,7 @@ describe('POST /v1/verifications/:id/confirm', () => {
         await SELF.fetch(`${base}/v1/cards`, {
           method: 'POST',
           headers: ADMIN,
-          body: JSON.stringify({ bankId, name, country: 'IN', networks: ['visa'] }),
+          body: JSON.stringify({ bankId, name, country: 'IN', networks: [{ code: 'visa', bins: [] }] }),
         }),
       )
       await SELF.fetch(`${base}/v1/wallet/cards/${c.id}`, as(token, { method: 'PUT' }))
