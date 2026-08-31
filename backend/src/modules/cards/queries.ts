@@ -281,13 +281,22 @@ async function requireCard(db: D1Database, id: string): Promise<void> {
  * makes this a replace. It also retires the 409 this used to raise: the caller
  * has stated both halves, so there is no unmentioned data to protect.
  */
+function requireNetworkId(idByCode: Map<string, string>, code: string): string {
+  const id = idByCode.get(code)
+  // Validation resolved every code against the same listNetworksForValidation
+  // call this map is built from, so a miss means those two drifted apart.
+  // Better to fail loudly than to return 201 for a set we did not write.
+  if (id === undefined) throw new Error(`Network code '${code}' has no id; validation and idByCode disagree`)
+  return id
+}
+
 async function replaceNetworks(
   db: D1Database,
   cardId: string,
   networks: CardNetworkInput[],
   idByCode: Map<string, string>,
 ): Promise<void> {
-  const ids = networks.map((n) => idByCode.get(n.code)).filter((id): id is string => id !== undefined)
+  const ids = networks.map((n) => requireNetworkId(idByCode, n.code))
 
   // `NOT IN ()` is not valid SQL, so an empty set drops the clause rather than
   // emitting it -- which is exactly the `networks: []` case.
@@ -299,8 +308,7 @@ async function replaceNetworks(
   ]
 
   for (const network of networks) {
-    const networkId = idByCode.get(network.code)
-    if (networkId === undefined) continue
+    const networkId = requireNetworkId(idByCode, network.code)
     statements.push(
       db
         .prepare(
@@ -311,8 +319,7 @@ async function replaceNetworks(
   }
 
   for (const network of networks) {
-    const networkId = idByCode.get(network.code)
-    if (networkId === undefined) continue
+    const networkId = requireNetworkId(idByCode, network.code)
     for (const bin of network.bins) {
       statements.push(
         db

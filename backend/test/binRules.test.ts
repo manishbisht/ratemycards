@@ -116,6 +116,15 @@ describe('isBinRuleValue', () => {
     }
   })
 
+  it('rejects a glob longer than the cap, which would make the RegExp expensive', () => {
+    expect(isBinRuleValue('glob', '*'.repeat(25))).toBe(false)
+    expect(isBinRuleValue('glob', `${'*'.repeat(30)}5`)).toBe(false)
+  })
+
+  it('still accepts the longest glob the catalog actually seeds', () => {
+    expect(isBinRuleValue('glob', '64[4-9]*')).toBe(true)
+  })
+
   /**
    * Alphabet-valid but structurally broken. Each of these would reach
    * new RegExp() under an alphabet-only check and throw.

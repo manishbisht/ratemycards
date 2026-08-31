@@ -44,11 +44,21 @@ export function isBinRuleKind(value: unknown): value is BinRuleKind {
 const GLOB_SHAPE = /^(?:[0-9]|\*|\[(?:[0-9]-[0-9]|[0-9])+\])+$/
 
 /**
+ * No real ISO/IEC 7812 rule needs more than a handful of characters -- the
+ * longest this catalog seeds is '64[4-9]*' at 8. The cap exists because
+ * globToRegExp turns every '*' into '.*', and a value of ~26 stars costs
+ * about 650ms to test against one prefix, ~5x per four stars after that. An
+ * admin could otherwise plant one rule and make every card write expensive.
+ */
+const MAX_GLOB_LENGTH = 24
+
+/**
  * Shape alone still admits a descending range like '[9-0]', which throws
  * 'Range out of order'. GLOB_SHAPE guarantees a '-' only ever sits between two
  * digits inside a class, so scanning the whole string is safe.
  */
 function isWellFormedGlob(value: string): boolean {
+  if (value.length > MAX_GLOB_LENGTH) return false
   if (!GLOB_SHAPE.test(value)) return false
 
   for (const match of value.matchAll(/([0-9])-([0-9])/g)) {
