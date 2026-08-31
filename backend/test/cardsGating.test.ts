@@ -108,6 +108,36 @@ describe('BIN-gated discovery', () => {
     const body = await json(await send('GET', '/v1/cards?q=No%20Bins'))
     expect(body.data.map((c: any) => c.id)).toEqual([gatedId])
   })
+
+  it('keeps ?network= working after the network is soft-deleted', async () => {
+    const made = await json(
+      await send('POST', '/v1/networks', {
+        code: 'retirefilter',
+        name: 'Retire Filter',
+        binRules: [{ kind: 'glob', value: '9*' }],
+      }),
+    )
+    const card = await json(
+      await send('POST', '/v1/cards', {
+        bankId,
+        name: 'Retire Filter Card',
+        country: 'IN',
+        networks: [{ code: 'retirefilter', bins: ['912345'] }],
+      }),
+    )
+
+    expect(
+      (await json(await send('GET', '/v1/cards?network=retirefilter'))).data.map((c: any) => c.id),
+    ).toEqual([card.id])
+
+    expect((await send('DELETE', `/v1/networks/${made.id}`)).status).toBe(204)
+
+    // A retired network keeps its card associations and keeps working as a
+    // filter value. Only new card writes reject it.
+    expect(
+      (await json(await send('GET', '/v1/cards?network=retirefilter'))).data.map((c: any) => c.id),
+    ).toEqual([card.id])
+  })
 })
 
 describe('deactivated banks', () => {

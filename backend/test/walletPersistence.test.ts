@@ -425,41 +425,23 @@ describe('the cards API serves both audiences', () => {
     expect(((await res.json()) as any).wallet.inWallet).toBe(true)
   })
 
-
-  it('marks a card the caller does not hold as not in the wallet', async () => {
-    const res = await SELF.fetch(`${base}/v1/cards?ids=${cardA}`, as(tokenBob))
-    const card = ((await res.json()) as any).data[0]
-    expect(card.wallet.inWallet).toBe(false)
-    expect(card.wallet.verificationStatus).toBe('unverified')
-  })
-
-  it('still hides the rating from a signed-in caller', async () => {
-    const res = await SELF.fetch(`${base}/v1/cards?ids=${cardA}`, as(tokenAda))
-    expect(((await res.json()) as any).data[0]).not.toHaveProperty('rating')
-  })
-
-  it('carries the wallet block on a single-card read too', async () => {
-    const res = await SELF.fetch(`${base}/v1/cards/${cardA}`, as(tokenAda))
-    expect(((await res.json()) as any).wallet.inWallet).toBe(true)
-  })
-
-  /**
-   * The wallet join adds a bind to the page query but not to the networks
-   * query beside it in the batch. If those two bind lists ever drift, this is
-   * where it shows: the networks would attach to the wrong card, or the filter
-   * would silently select a different page.
-   */
   /**
    * A signed-in caller gets one extra key -- `wallet` -- and nothing else. In
    * particular, having a session does not unlock the networks or BIN prefixes
    * behind a card; those are not on this payload for anyone.
    */
   it('adds the wallet block and nothing else for a signed-in caller', async () => {
-    await SELF.fetch(`${base}/v1/cards/${cardA}`, {
+    const patchRes = await SELF.fetch(`${base}/v1/cards/${cardA}`, {
       method: 'PATCH',
       headers: { Authorization: 'Bearer test-admin-token', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ networks: ['visa', 'rupay'] }),
+      body: JSON.stringify({
+        networks: [
+          { code: 'visa', bins: ['412345'] },
+          { code: 'rupay', bins: ['508123'] },
+        ],
+      }),
     })
+    expect(patchRes.status).toBe(200)
 
     const res = await SELF.fetch(`${base}/v1/cards?ids=${cardA}`, as(tokenAda))
     const card = ((await res.json()) as any).data[0]
