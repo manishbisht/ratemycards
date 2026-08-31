@@ -42,6 +42,15 @@ export function validateCardIds(body: unknown): Validated<string[]> {
  * The body of a verification-status write. Only the status is accepted: the
  * timestamp that goes with it is the server's to decide, so a client cannot
  * backdate a verification.
+ *
+ * 'verified' is NOT accepted here, and that is the point. It is earned by
+ * POST /v1/verifications/:id/confirm, which checks a real Razorpay payment
+ * against the card being claimed. If this endpoint took the client's word for it
+ * -- as it did before that flow existed -- the whole 1-rupee check would be
+ * bypassable with a single curl, and every rating built on it would be fiction.
+ *
+ * The other three stay writable: they are the client reporting what it saw
+ * (a dismissed modal, a decline), and none of them grants anything.
  */
 export function validateVerificationStatus(body: unknown): Validated<VerificationStatus> {
   if (!isPlainObject(body)) {
@@ -51,6 +60,12 @@ export function validateVerificationStatus(body: unknown): Validated<Verificatio
     return {
       ok: false,
       errors: ['status must be one of: unverified, pending, verified, failed.'],
+    }
+  }
+  if (body.status === 'verified') {
+    return {
+      ok: false,
+      errors: ['A card can only become verified by completing a card verification.'],
     }
   }
 
