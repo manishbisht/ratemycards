@@ -299,7 +299,7 @@ Rule matching, given a prefix and its network's rules — a prefix is valid if
   longer prefix; `508` alone matches nothing 6 digits long.
 - **range** — `parseInt(prefix.slice(0, 4), 10)` within `lo..hi` inclusive.
 
-Rejections, each a 422 with a specific message:
+Rejections, each a 400 with a specific message:
 
 | Case | Message shape |
 |---|---|
@@ -316,22 +316,42 @@ validate, and silently waving BINs through would defeat the point.
 
 ## Frontend
 
-No visible change. The picker filters a catalog it already loads whole; it
-simply receives fewer cards. No component, selector or slice changes.
+`loadCatalog` changes, and so does the picker. The BIN gate above is
+discovery-scoped by design, but discovery is exactly what `loadCatalog` does:
+it calls plain `GET /v1/cards`, paged, with no `ids`. The `ids` carve-out
+that protects `resolveWallet` and `/v1/wallet/preview` does not cover this
+call, so a gated catalog would come back as 33 cards with `total` to match --
+which satisfies the prune listener's `cards.length >= total` guard in
+`store.ts:70-77` and makes it delete the other 67 cards' `picked`,
+`verificationStatus` and `verifiedAt` from localStorage. For an anonymous
+wallet that loss is permanent; for a signed-in one, `selectChosenCards` still
+filters the same shrunken array, so the held card vanishes from the deck even
+though `/v1/wallet` keeps scoring it server-side.
 
-`store.ts`'s prune listener is left alone — the `ids` carve-out means the
-catalog no longer shrinks under a wallet, so the listener stays correct.
+The fix (`7b9f307`) is `loadCatalog` passing `includeUnselectable: true` on
+every page, so pruning always sees every card that exists, plus a new
+`selectable` field on the card payload that `CardPickerPage` filters on
+client-side to hide the BIN-less cards from the deck. `store.ts`'s prune
+listener itself is unchanged; what changed is what it is fed.
 
 ## Testing
 
 | File | Cases |
 |---|---|
 | `validate.test.ts` | glob match and miss; 4-digit range at both bounds and outside; 6 vs 8 digits; non-digits; unknown code; inactive network; ruleless network; duplicate code; one prefix under two networks |
-| `cardsWrite.test.ts` | create with nested networks + bins; replace drops a network *and* its bins; replace with `bins: []` leaves the card unselectable; `type` defaults to `credit`; invalid `type` is a 422; unknown network code is a 422 |
+| `cardsWrite.test.ts` | create with nested networks + bins; replace drops a network *and* its bins; replace with `bins: []` leaves the card unselectable; `type` defaults to `credit`; invalid `type` is a 400; unknown network code is a 400 |
 | `cardsRead.test.ts` | BIN-less card absent from `GET /v1/cards`; present via `?ids=`; present via `GET /v1/cards/:id`; present via `?includeUnselectable=true`; `?network=visa` still filters; deactivated bank hides its cards but `?includeInactive=true` shows them |
 | `walletPersistence.test.ts` | a wallet holding a BIN-less card resolves, scores, and keeps its verification status |
 | `verification.test.ts` | existing behaviour holds through the `network_id` change; a card with networks but no BINs still fails to start a verification |
-| new `networks.test.ts` | CRUD; `binRules` replaces and `[]` clears; `POST` without rules is a 422; soft delete keeps `?network=` working; card writes reject an inactive network; **every** verb including `GET` is a 401 without an admin token |
+| new `networks.test.ts` | CRUD; `binRules` replaces and `[]` clears; `POST` without rules is a 400; soft delete keeps `?network=` working; card writes reject an inactive network; **every** verb including `GET` is a 401 without an admin token |
+
+**Consequence:** implemented in `895a45f` -- a card with networks but no BIN
+prefixes on file now refuses to start a verification (`400`, "No BIN prefixes
+are on file for '<name>'"), rather than handing Checkout an empty `iins` list
+that dropped the restriction entirely. This lands on the same 67 of the 100
+seeded cards that the BIN gate above already hides from browse: they are
+unverifiable, not just undiscoverable, until an admin backfills their
+prefixes.
 
 ## Sequence
 
