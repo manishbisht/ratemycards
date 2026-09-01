@@ -180,7 +180,7 @@ like you never claimed one.
 
 | File | Cases |
 |---|---|
-| new `handles.test.ts` | claim; the same handle twice from two users is a 409; renaming frees the old one for somebody else; no verified card is a 409; reserved words are a 409; malformed handles are a 400 with details; case is normalised; `/v1/users/me` returns it |
+| new `handles.test.ts` | claim; the same handle twice from two users is a 409; renaming frees the old one for somebody else; no verified card is a 409; reserved words are a 400; malformed handles are a 400 with details; case is normalised; `/v1/users/me` returns it |
 | new `profiles.test.ts` | a signed-out read works; only verified cards appear; score matches the verified set, not the whole wallet; 404 on unknown; 404 once the owner is deactivated; the payload contains no email, name, image or user id |
 | `usersWebhook.test.ts` | a webhook upsert leaves an existing handle alone |
 
