@@ -149,3 +149,22 @@ export async function mergeCards(
 
   return getWallet(db, userId)
 }
+
+/**
+ * How many of a person's cards are verified.
+ *
+ * Exported for the users module, which gates claiming a handle on there being
+ * at least one -- it cannot read wallet_cards itself, and counting in SQL beats
+ * resolving and scoring a whole wallet to ask a yes/no question.
+ */
+export async function countVerifiedCards(db: D1Database, userId: string): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM wallet_cards
+       WHERE user_id = ? AND verification_status = 'verified'`,
+    )
+    .bind(userId)
+    .first<{ n: number }>()
+
+  return row?.n ?? 0
+}
