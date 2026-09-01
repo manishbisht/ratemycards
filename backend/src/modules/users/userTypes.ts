@@ -17,6 +17,11 @@ export type User = {
   name: string | null
   imageUrl: string | null
   isActive: boolean
+  /**
+   * Whether this person may drive the admin panel. Granted from the
+   * ADMIN_EMAILS allowlist, never from anything the client sends.
+   */
+  isAdmin: boolean
 }
 
 /**

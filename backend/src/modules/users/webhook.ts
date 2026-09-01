@@ -52,7 +52,10 @@ clerkWebhookRoutes.post('/clerk', async (c) => {
     case 'user.created':
     case 'user.updated': {
       const identity = normalizeIdentity(identityFromUser(event.data))
-      if (identity) await upsertUserByClerkId(c.env.DB, identity)
+      // The webhook payload always carries the primary address, so this is the
+      // path that reliably lands an admin grant -- see the reconcile in
+      // users/queries.ts.
+      if (identity) await upsertUserByClerkId(c.env.DB, identity, c.env.ADMIN_EMAILS)
       break
     }
     case 'user.deleted': {

@@ -24,6 +24,10 @@
   "secrets": {
     "required": [
       "ADMIN_TOKEN",
+      // Comma-separated addresses that get users.is_admin on sign-in. A secret
+      // rather than a var because this file is committed to a public repo, and
+      // a var would publish which account owns the admin panel.
+      "ADMIN_EMAILS",
       "CLERK_WEBHOOK_SIGNING_SECRET",
       // Fetches Clerk's JWKS, which is what verifies a session token.
       "CLERK_SECRET_KEY",

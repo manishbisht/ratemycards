@@ -6,6 +6,7 @@ import type { AppEnv } from '../env'
 export type ErrorCode =
   | 'validation_error'
   | 'unauthorized'
+  | 'forbidden'
   | 'not_found'
   | 'conflict'
   | 'internal_error'
@@ -13,6 +14,7 @@ export type ErrorCode =
 const STATUS: Record<ErrorCode, ContentfulStatusCode> = {
   validation_error: 400,
   unauthorized: 401,
+  forbidden: 403,
   not_found: 404,
   conflict: 409,
   internal_error: 500,
@@ -48,6 +50,16 @@ export class ApiError extends Error {
 
   static unauthorized(message = 'A valid admin bearer token is required.'): ApiError {
     return new ApiError('unauthorized', message)
+  }
+
+  /**
+   * Authenticated, but not allowed. Distinct from `unauthorized` because the
+   * two want opposite things from a client: a 401 means present a credential,
+   * a 403 means the credential you presented will never work. Signing out and
+   * back in fixes one and not the other.
+   */
+  static forbidden(message: string): ApiError {
+    return new ApiError('forbidden', message)
   }
 }
 

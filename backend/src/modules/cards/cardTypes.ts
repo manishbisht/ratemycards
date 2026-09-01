@@ -81,7 +81,9 @@ export type CardWallet = {
  * prefixes behind each, are tracked in `card_networks` / `card_bins` but not
  * published on the card: the UI does not show them, and a card verification
  * that checks a BIN cannot be worth anything if the list of accepted BINs is
- * readable from the catalog. They get their own endpoint instead.
+ * readable from the catalog. They get their own endpoint instead --
+ * `GET /v1/cards/:id/networks`, which is admin-only on the read as well as the
+ * write.
  */
 export type Card = {
   id: string

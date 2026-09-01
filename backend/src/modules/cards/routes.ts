@@ -7,7 +7,14 @@ import type { AppEnv } from '../../env'
 import { toPublicCard } from './cardTypes'
 import { getCardScores, replaceCardScores } from '../scoring/queries'
 import { validateScoresBody } from '../scoring/validate'
-import { createCard, deactivateCard, getCard, listCards, updateCard } from './queries'
+import {
+  createCard,
+  deactivateCard,
+  getCard,
+  listCardNetworks,
+  listCards,
+  updateCard,
+} from './queries'
 import { validateCardInput, validateCardPatch } from './validate'
 import { listNetworksForValidation } from '../networks/queries'
 
@@ -63,6 +70,28 @@ cardRoutes.get('/:id/scores', adminAuth, async (c) => {
 
   const scores = await getCardScores(c.env.DB, id)
   return c.json({ data: scores, total: scores.length, rating: card.rating })
+})
+
+/**
+ * The networks a card runs on and the BIN prefixes recorded under each.
+ *
+ * Admin-only, and the second reader of `listCardNetworks` after the
+ * verification flow. It exists because `PATCH /v1/cards/:id { networks }`
+ * *replaces* the set rather than merging it: an editor that could not read the
+ * current set would silently destroy it on every save.
+ *
+ * This does not soften what README's "Who reads the prefixes" section argues.
+ * The claim there was never that prefixes are unreadable -- `POST
+ * /v1/verifications` already hands one card's list to the browser, because
+ * Checkout is configured client-side. The claim is that they are never on the
+ * public card and never trusted from the client, and both still hold.
+ */
+cardRoutes.get('/:id/networks', adminAuth, async (c) => {
+  const id = c.req.param('id')
+  if (!(await getCard(c.env.DB, id))) throw ApiError.notFound(`Card '${id}'`)
+
+  const networks = await listCardNetworks(c.env.DB, id)
+  return c.json({ data: networks, total: networks.length })
 })
 
 /** Replaces the whole set, so repeated calls cannot accumulate duplicates. */

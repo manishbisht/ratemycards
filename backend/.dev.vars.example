@@ -5,6 +5,13 @@
 # npx wrangler secret put ADMIN_TOKEN
 ADMIN_TOKEN="local-dev-admin-token"
 
+# Comma-separated addresses that get users.is_admin, which is what lets a Clerk
+# session stand in for ADMIN_TOKEN on the admin panel. Reconciled on every
+# upsert, so adding an address here grants it on that person's next sign-in.
+# A secret rather than a wrangler.jsonc var because this repo is public.
+# npx wrangler secret put ADMIN_EMAILS
+ADMIN_EMAILS="you@example.com"
+
 # Signing secret for the Clerk webhook that keeps the users table in step.
 # dashboard.clerk.com -> Webhooks -> the endpoint -> Signing Secret.
 CLERK_WEBHOOK_SIGNING_SECRET="whsec_..."

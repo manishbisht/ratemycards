@@ -150,6 +150,11 @@ export default defineConfig(async () => {
             TEST_MIGRATIONS: migrations,
             // Supplies the secrets without a .dev.vars file, so CI needs no setup.
             ADMIN_TOKEN: 'test-admin-token',
+            // Whoever signs in with this address gets users.is_admin, which is
+            // what lets a session token stand in for ADMIN_TOKEN. Two entries,
+            // with stray whitespace and mixed case, so the parsing is exercised
+            // rather than only the happy single-value path.
+            ADMIN_EMAILS: 'Admin@Test.Example, second-admin@test.example ',
             CLERK_WEBHOOK_SIGNING_SECRET: 'whsec_cmF0ZW15Y2FyZHMtdGVzdC13ZWJob29rLXNlY3JldCE=',
             // Never reaches Clerk: outboundService below answers the JWKS
             // request. It only has to be present, so the middleware takes its

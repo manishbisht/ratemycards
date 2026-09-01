@@ -14,7 +14,7 @@ import { ApiError } from './errors'
  * `optionalUser` lets them through unidentified.
  */
 
-function bearerToken(c: Context<AppEnv>): string | null {
+export function bearerToken(c: Context<AppEnv>): string | null {
   const header = c.req.header('Authorization')
   if (!header) return null
 
@@ -23,11 +23,32 @@ function bearerToken(c: Context<AppEnv>): string | null {
 }
 
 /**
+ * Three dot-separated base64url segments -- the shape of a JWS compact
+ * serialisation, and therefore of a Clerk session token.
+ *
+ * A routing hint, not a check: adminAuth uses it to tell which of its two
+ * credentials it is holding, and `verifyToken` is what decides whether the
+ * thing is genuine. A shared secret that happened to match would simply fail
+ * verification a line later.
+ *
+ * It cannot happen anyway, and that is worth stating rather than leaving to
+ * luck: README's recipe generates ADMIN_TOKEN as base64url of 32 random bytes,
+ * which is 43 characters with no '.' in the alphabet. **Do not rotate
+ * ADMIN_TOKEN to anything containing two dots** -- it would route to the
+ * session path and 401.
+ */
+const SESSION_TOKEN_SHAPE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
+
+export function looksLikeSessionToken(token: string): boolean {
+  return SESSION_TOKEN_SHAPE.test(token)
+}
+
+/**
  * Verified claims in, our user row out. The upsert here is the backstop for the
  * Clerk webhook: a user whose `user.created` never arrived still gets a row on
  * their first API call, so no request fails for want of one.
  */
-async function resolveUser(c: Context<AppEnv>, token: string): Promise<AuthUser> {
+export async function resolveUser(c: Context<AppEnv>, token: string): Promise<AuthUser> {
   const secretKey = c.env.CLERK_SECRET_KEY
   if (!secretKey) {
     // Fails closed, like adminAuth: a half-configured deploy rejects callers
@@ -57,14 +78,25 @@ async function resolveUser(c: Context<AppEnv>, token: string): Promise<AuthUser>
     throw ApiError.unauthorized('A valid session token is required.')
   }
 
-  const user = await upsertUserByClerkId(c.env.DB, {
-    clerkId: claims.sub,
-    email: readClaim(claims, 'email'),
-    name: readClaim(claims, 'name') ?? readClaim(claims, 'full_name'),
-    imageUrl: readClaim(claims, 'image_url') ?? readClaim(claims, 'picture'),
-  })
+  const user = await upsertUserByClerkId(
+    c.env.DB,
+    {
+      clerkId: claims.sub,
+      // Clerk's *default* session token carries none of these -- they arrive
+      // only if the JWT template was customised, and the shorthand people
+      // reach for differs. Several spellings are tried for the same reason
+      // `name` already falls back to `full_name`.
+      email:
+        readClaim(claims, 'email') ??
+        readClaim(claims, 'primary_email_address') ??
+        readClaim(claims, 'email_address'),
+      name: readClaim(claims, 'name') ?? readClaim(claims, 'full_name'),
+      imageUrl: readClaim(claims, 'image_url') ?? readClaim(claims, 'picture'),
+    },
+    c.env.ADMIN_EMAILS,
+  )
 
-  return { id: user.id, clerkId: claims.sub }
+  return { id: user.id, clerkId: claims.sub, isAdmin: user.isAdmin }
 }
 
 /**

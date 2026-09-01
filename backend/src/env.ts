@@ -12,6 +12,11 @@
 export type AuthUser = {
   id: string
   clerkId: string
+  /**
+   * Read from the user's own row, never from a claim: Clerk is the identity
+   * provider, not the authority on who may edit the catalog.
+   */
+  isAdmin: boolean
 }
 
 export type AppEnv = {

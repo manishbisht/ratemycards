@@ -7,9 +7,10 @@ type UserRow = {
   name: string | null
   image_url: string | null
   is_active: number
+  is_admin: number
 }
 
-const USER_COLUMNS = 'id, email, name, image_url, is_active'
+const USER_COLUMNS = 'id, email, name, image_url, is_active, is_admin'
 const NOW = "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')"
 
 function toUser(row: UserRow): User {
@@ -19,7 +20,29 @@ function toUser(row: UserRow): User {
     name: row.name,
     imageUrl: row.image_url,
     isActive: row.is_active === 1,
+    isAdmin: row.is_admin === 1,
   }
+}
+
+/**
+ * Whether an address is on the ADMIN_EMAILS allowlist -- a comma-separated
+ * Worker secret, the same shape as the ALLOWED_ORIGINS var.
+ *
+ * A secret rather than a var because this repository is public and a var lives
+ * in the committed wrangler.jsonc: naming the address there would publish which
+ * account owns the admin panel.
+ *
+ * An unset or empty allowlist grants nobody, so a half-configured deploy has no
+ * admin rather than everyone.
+ */
+export function isAdminEmail(email: string | null, adminEmails: string | undefined): boolean {
+  if (!email) return false
+
+  const wanted = email.trim().toLowerCase()
+  return (adminEmails ?? '')
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .some((entry) => entry.length > 0 && entry === wanted)
 }
 
 /**
@@ -34,8 +57,16 @@ function toUser(row: UserRow): User {
  * COALESCE on the update keeps a field we already know when the newer source
  * omits it -- a session token carries fewer claims than a webhook payload, and
  * the sparser one must not blank the row.
+ *
+ * `is_admin` is absent from the UPDATE on purpose: it is not Clerk's to say, and
+ * an upsert must never revoke it. The allowlist reconcile below is the one
+ * writer.
  */
-export async function upsertUserByClerkId(db: D1Database, identity: ClerkIdentity): Promise<User> {
+export async function upsertUserByClerkId(
+  db: D1Database,
+  identity: ClerkIdentity,
+  adminEmails?: string,
+): Promise<User> {
   const row = await db
     .prepare(
       `INSERT INTO users (id, clerk_id, email, name, image_url)
@@ -58,7 +89,31 @@ export async function upsertUserByClerkId(db: D1Database, identity: ClerkIdentit
     .first<UserRow>()
 
   if (!row) throw new Error(`User for Clerk id '${identity.clerkId}' vanished during upsert`)
-  return toUser(row)
+
+  const user = toUser(row)
+
+  /**
+   * Reconciled against the row's *effective* email -- the one the upsert just
+   * settled -- rather than `identity.email`. That distinction is the whole
+   * point: a session token usually carries no `email` claim, so checking the
+   * incoming value would grant an admin on the webhook and never again.
+   *
+   * Grant-only. Dropping an address from the allowlist does not revoke the flag,
+   * because the sparse-claims problem cuts both ways: an incoming identity with
+   * no email must not be read as "not an admin". Revoke with a one-line UPDATE.
+   *
+   * The write happens at most once per user, ever, so the steady state is still
+   * a single statement per authenticated request.
+   */
+  if (!user.isAdmin && isAdminEmail(user.email, adminEmails)) {
+    await db
+      .prepare(`UPDATE users SET is_admin = 1, updated_at = ${NOW} WHERE id = ?`)
+      .bind(user.id)
+      .run()
+    return { ...user, isAdmin: true }
+  }
+
+  return user
 }
 
 export async function getUserByClerkId(db: D1Database, clerkId: string): Promise<User | null> {

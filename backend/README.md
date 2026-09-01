@@ -45,12 +45,80 @@ persisted under `.wrangler/state/`.
 
 ## Auth
 
-Two unrelated mechanisms, both on the `Authorization: Bearer` header:
+Two mechanisms, both on the `Authorization: Bearer` header:
 
 | | Guards | Checked by |
 | --- | --- | --- |
 | `ADMIN_TOKEN` | catalog writes | `src/http/adminAuth.ts` |
 | Clerk session token | wallets, `/v1/users/me` | `src/http/clerkAuth.ts` |
+| Clerk session with `users.is_admin` | catalog writes, as an alternative to the token | `src/http/adminAuth.ts` |
+
+`adminAuth` accepts either credential, because the admin panel is a browser and
+a browser cannot hold the shared secret — every `VITE_*` value is baked into the
+public bundle. It discriminates on token *shape*: a three-segment base64url JWT
+goes to the session path, anything else to `hono/bearer-auth` exactly as before.
+
+**Do not rotate `ADMIN_TOKEN` to a value containing two dots.** The recipe below
+generates 43 base64url characters, which has no `.` in its alphabet, so the two
+credentials cannot be confused. A JWT-shaped secret would route to the session
+path and 401.
+
+On the session path a non-admin gets **403 `forbidden`**, not 401: their
+credential is valid and signing in again will not help. On the shared-token path
+`c.get('user')` is `undefined` — the token identifies nobody, so there is no
+audit trail behind it.
+
+### Who is an admin
+
+`users.is_admin` (migration `0013`), granted from `ADMIN_EMAILS` — a
+comma-separated **secret**, not a var, because `wrangler.jsonc` is committed to a
+public repository and a var would publish which address owns the panel. For the
+same reason no migration names an address.
+
+`upsertUserByClerkId` reconciles the flag on every upsert, against the row's
+*settled* email rather than the incoming identity: a session token usually
+carries no `email` claim, so checking the incoming value would grant on the
+webhook and never again. The write happens at most once per user.
+
+The grant is one-way. Removing an address from `ADMIN_EMAILS` does not revoke
+anything, because an identity arriving with no email must not be read as "not an
+admin". Revoke by hand:
+
+```bash
+npx wrangler d1 execute ratemycards --remote \
+  --command "UPDATE users SET is_admin = 0 WHERE email = '...'"
+```
+
+### The grant needs an email to have reached the row
+
+Which is not automatic, and is the one thing that catches people out.
+`users.email` is populated from two places, and **locally neither one fires**:
+
+- The Clerk webhook always carries the primary address — but it cannot reach
+  `localhost`, so it never runs in local dev.
+- The session token carries an `email` claim only if the **JWT template was
+  customised to add one**. Clerk's default session token has no `email` and no
+  `name`.
+
+So a fresh local database gives every user `email = NULL`, and an allowlist
+match against `NULL` is correctly false — nobody is ever granted. In production
+the webhook covers it.
+
+The durable fix is to add the claim in the Clerk dashboard, under Sessions →
+customise the session token:
+
+```json
+{ "email": "{{user.primary_email_address}}" }
+```
+
+That makes local dev behave like production and stops the grant depending on
+webhook delivery. Until then, bootstrap a local admin by hand — set the address
+and let the next request reconcile the flag:
+
+```bash
+npx wrangler d1 execute ratemycards --local \
+  --command "UPDATE users SET email = '<you>' WHERE clerk_id = '<clerk id>'"
+```
 
 Session tokens are verified against Clerk's JWKS, fetched with
 `CLERK_SECRET_KEY` and cached per isolate for five minutes. A token arriving
@@ -101,6 +169,7 @@ Reads are public. Writes need `Authorization: Bearer $ADMIN_TOKEN`.
 | `PATCH` | `/v1/criteria/:id` | admin — partial update, including `weight` |
 | `DELETE` | `/v1/criteria/:id` | admin — soft delete; drops out of every rating |
 | `GET` | `/v1/cards` | `q`, `bankId`, `country`, `network`, `maxAnnualFee`, `ids`, `limit` (≤100), `offset`, `includeInactive` |
+| `GET` | `/v1/cards/:id/networks` | admin — the card's networks and the BIN prefixes under each |
 | `GET` | `/v1/cards/:id/scores` | admin — the card's score breakdown and rating |
 | `PUT` | `/v1/cards/:id/scores` | admin — replaces the whole score set |
 | `POST` | `/v1/wallet/preview` | scores a set of cards; stores nothing |
@@ -372,10 +441,15 @@ deactivated. Before this, `buildWhere` checked `c.is_active` but never
 ### Who reads the prefixes
 
 `cards.listCardNetworks` is the one door: a card's networks with the prefixes
-behind each, built for the verification flow and never serialised onto a card.
-There is no `GET /v1/cards/:id/bins` and deliberately so — the only caller that
-needs prefixes is `POST /v1/verifications`, which hands out just the one card's
-list so Checkout can narrow to it.
+behind each, never serialised onto a card. It has two callers.
+
+`POST /v1/verifications` hands out just the one card's list so Checkout can
+narrow to it. `GET /v1/cards/:id/networks` serves the admin panel, and is
+guarded on the read as well as the write — there is deliberately still no
+*public* way to reach a prefix. That endpoint exists because
+`PATCH /v1/cards/:id { networks }` replaces the set rather than merging into it:
+an editor that could not read the current set would silently destroy it on every
+save.
 
 That list does reach the browser, which is unavoidable: Checkout is configured
 client-side. It does not weaken anything, because knowing the accepted prefixes
