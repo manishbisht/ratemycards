@@ -139,6 +139,7 @@ export function ClaimHandlePage() {
               setHandle(e.target.value)
               setError(null)
             }}
+            disabled={claiming}
             placeholder="yourname"
             aria-label="Your handle"
             autoComplete="off"
