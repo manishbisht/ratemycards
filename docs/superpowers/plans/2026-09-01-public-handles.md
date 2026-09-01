@@ -285,26 +285,29 @@ webhook. It must leave `handle` alone for the same reason it leaves `is_admin`
 alone. Append to `backend/test/usersWebhook.test.ts`, inside the existing
 top-level `describe`:
 
+Add it inside the existing `describe('user events', …)` block. The helpers
+`send(payload)` and `userCreated(id, overrides)` are already defined at the top
+of that file (lines 20 and 51) — use them as the other tests do:
+
 ```ts
   it('leaves an existing handle alone', async () => {
-    await send('user.created', userPayload({ id: 'user_webhook_handle' }))
+    await send(userCreated('clerk_handle_keeper'))
     await env.DB.prepare(
-      "UPDATE users SET handle = 'webhookheld' WHERE clerk_id = 'user_webhook_handle'",
+      "UPDATE users SET handle = 'webhookheld' WHERE clerk_id = 'clerk_handle_keeper'",
     ).run()
 
-    // A later update -- a changed name, a new avatar -- must not touch it.
-    await send('user.updated', userPayload({ id: 'user_webhook_handle', first_name: 'Renamed' }))
+    // A later event -- a changed name, a new avatar -- must not touch it.
+    await send({
+      ...userCreated('clerk_handle_keeper', { first_name: 'Renamed' }),
+      type: 'user.updated',
+    })
 
     const row = await env.DB.prepare(
-      "SELECT handle FROM users WHERE clerk_id = 'user_webhook_handle'",
+      "SELECT handle FROM users WHERE clerk_id = 'clerk_handle_keeper'",
     ).first<{ handle: string | null }>()
     expect(row?.handle).toBe('webhookheld')
   })
 ```
-
-If `send` and `userPayload` are named differently in that file, use whatever its
-existing tests use — read the top of the file first; the point is one
-`user.created`, a direct `UPDATE`, then one `user.updated`.
 
 Run: `cd backend && npx vitest run test/usersWebhook.test.ts`
 Expected: PASS.
@@ -631,11 +634,12 @@ describe('PUT /v1/users/me/handle', () => {
     expect(((await res.json()) as any).error.details.join(' ')).toMatch(/3 to 20/)
   })
 
-  it('409s a reserved handle', async () => {
+  // Reserved is a 400 from the validator, not a 409: it is a bad value caught
+  // before any database work, not a race. The spec's error table says 409 and
+  // is corrected in Task 8.
+  it('400s a reserved handle', async () => {
     const token = await withVerifiedCard('user_claim_reserved')
     const res = await claim(token, 'admin')
-    // Reserved is a 400 from the validator, not a 409 -- it is a bad value, not
-    // a race. The frontend shows either the same way.
     expect(res.status).toBe(400)
     expect(((await res.json()) as any).error.details.join(' ')).toMatch(/reserved/i)
   })
@@ -1683,24 +1687,34 @@ with:
   // while a claim is still settling. Anyone else's comes from the API.
   const own = state.handle === username
 
-  const [fetched, setFetched] = useState<PublicProfile | null>(null)
-  const [missing, setMissing] = useState(false)
+  // One settled answer, tagged with the handle it belongs to. Derived rather
+  // than reset at the top of the effect: this project's react-hooks config
+  // rejects a synchronous setState in an effect body, and keying the result
+  // means a late reply for a previous handle can never be shown against this
+  // one.
+  const [settled, setSettled] = useState<
+    { handle: string; profile: PublicProfile } | { handle: string; profile: null } | null
+  >(null)
 
   useEffect(() => {
     if (own) return
 
     const controller = new AbortController()
-    setMissing(false)
 
     fetchProfile(username, controller.signal)
-      .then(setFetched)
+      .then((profile) => setSettled({ handle: username, profile }))
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === 'AbortError') return
-        setMissing(true)
+        setSettled({ handle: username, profile: null })
       })
 
     return () => controller.abort()
   }, [own, username])
+
+  const answer = settled?.handle === username ? settled : null
+  const fetched = answer?.profile ?? null
+  /** Settled, and there is nothing there — as opposed to still loading. */
+  const missing = answer !== null && answer.profile === null
 
   const view: ProfileView | null = own
     ? {
