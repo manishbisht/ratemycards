@@ -17,6 +17,7 @@ repo root pins it; run `nvm use`.
 | wallet  | `src/modules/wallet/` | `wallet_cards` — which cards a signed-in person holds |
 | users   | `src/modules/users/` | `users` — who is behind a session |
 | verification | `src/modules/verification/` | `card_verifications` — the ₹1 proof that a card is really held |
+| profiles | `src/modules/profiles/` | owns no tables — composes `users` and `wallet` into the one public read |
 
 A bank has many cards (`cards.bank_id`). A card is scored 0–10 against each
 scoring criterion (`card_scores`), and its rating is derived from those.

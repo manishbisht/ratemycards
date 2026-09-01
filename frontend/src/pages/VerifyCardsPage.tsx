@@ -123,6 +123,13 @@ export function VerifyCardsPage() {
   // is enough to move on — the rest stay private and unscored.
   const canClaim = verifiedCount > 0
 
+  // This is where sign-in lands, every time (ssoRedirect.ts, LoginPage.tsx),
+  // so a returning user who already claimed a handle must see a CTA that
+  // takes them to their profile rather than back through Claim -- see
+  // RatingRevealPage's identical guard.
+  const handle = wallet.handle
+  const claimed = handle !== null
+
   return (
     <Screen glows={GLOWS} className={styles.content}>
       <h2 className={styles.title}>Verify your cards</h2>
@@ -222,8 +229,13 @@ export function VerifyCardsPage() {
             {rating}
           </div>
         </div>
-        <Button disabled={!canClaim} onClick={() => navigate({ kind: 'claim' })}>
-          {canClaim ? 'Claim your handle' : 'Verify a card to continue'}
+        <Button
+          disabled={!claimed && !canClaim}
+          onClick={() =>
+            navigate(claimed ? { kind: 'profile', username: handle } : { kind: 'claim' })
+          }
+        >
+          {claimed ? 'View your profile' : canClaim ? 'Claim your handle' : 'Verify a card to continue'}
         </Button>
         <div className={styles.footnote}>Unverified cards stay private and are never scored.</div>
       </div>

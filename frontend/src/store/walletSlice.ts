@@ -71,7 +71,16 @@ export const walletSlice = createSlice({
       state.verifiedAt = action.payload.verifiedAt
       state.synced = true
     },
-    claimHandle(state, action: PayloadAction<string>) {
+    /**
+     * Adopts the server's view of the handle, including `null`.
+     *
+     * A `null` here is not a no-op: it is how a stale local handle -- written
+     * by the pre-branch claim screen, which stored one with no server row
+     * behind it, or left behind after a rename -- gets cleared. Without this,
+     * a `null` from the server would be silently ignored and a browser could
+     * carry a handle forever that the server has never heard of.
+     */
+    claimHandle(state, action: PayloadAction<string | null>) {
       state.handle = action.payload
     },
     pruneCards(state, action: PayloadAction<CardId[]>) {

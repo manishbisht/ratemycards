@@ -44,7 +44,11 @@ export function useClerkUserSync(): void {
 
     fetchMe(controller.signal)
       .then((profile) => {
-        if (profile.handle) dispatch(walletActions.claimHandle(profile.handle))
+        // Dispatched unconditionally, including when profile.handle is null:
+        // a stale local handle -- from the pre-branch claim screen, or a
+        // rename on another device -- must be cleared, not just overwritten
+        // when the server has a non-null value.
+        dispatch(walletActions.claimHandle(profile.handle))
       })
       .catch(() => {
         // Not fatal. The claim screen re-checks against the server anyway, and

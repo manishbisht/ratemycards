@@ -39,5 +39,7 @@ export function checkHandleShape(raw: string): HandleCheck {
   }
   if (normalized.length < HANDLE_MIN) return result('short', 'A little longer, please')
   if (normalized.length > HANDLE_MAX) return result('long', `Keep it to ${HANDLE_MAX} characters`)
-  return result('ok', 'Checking…')
+  // Nothing reads this message -- ClaimHandlePage computes its own once a
+  // shape is 'ok'. Kept as a field only because the type requires one.
+  return result('ok', '')
 }

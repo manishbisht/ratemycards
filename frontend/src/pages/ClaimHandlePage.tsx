@@ -34,6 +34,14 @@ export function ClaimHandlePage() {
 
   const candidate = check.valid ? check.normalized : ''
 
+  // A returning user lands here with the input prefilled from their own,
+  // already-claimed handle (useClerkUserSync hydrates state.handle from
+  // /v1/users/me). The availability check then correctly reports it taken --
+  // a row does hold it, theirs -- which must not read as an error with no way
+  // forward. Re-submitting is a genuine no-op: PUT /v1/users/me/handle is
+  // idempotent for the same handle.
+  const isOwnHandle = check.valid && state.handle !== null && candidate === state.handle
+
   // Claiming is the end of the flow: sign in, verify at least one card, then
   // pick a handle. Deep links that skip a step land on the step they skipped,
   // so a public profile never exists with nothing verified behind it.
@@ -67,18 +75,20 @@ export function ClaimHandlePage() {
   if (!signedIn || !confirmed) return null
 
   const answered = availability?.handle === candidate ? availability : null
-  const free = answered?.free ?? false
+  const free = isOwnHandle ? true : (answered?.free ?? false)
   const canClaim = check.valid && free && !claiming
 
   const message = error
     ? error
     : !check.valid
       ? check.message
-      : answered === null
-        ? 'Checking…'
-        : free
-          ? 'Available'
-          : 'Taken. Try adding a number or an underscore.'
+      : isOwnHandle
+        ? 'This is your handle.'
+        : answered === null
+          ? 'Checking…'
+          : free
+            ? 'Available'
+            : 'Taken. Try adding a number or an underscore.'
 
   const good = check.valid && free && error === null
   const color =
@@ -86,11 +96,13 @@ export function ClaimHandlePage() {
       ? 'rgba(255,255,255,0.35)'
       : !check.valid || error
         ? '#F87171'
-        : answered === null
-          ? 'rgba(255,255,255,0.55)'
-          : free
-            ? '#34D399'
-            : '#F87171'
+        : isOwnHandle
+          ? '#34D399'
+          : answered === null
+            ? 'rgba(255,255,255,0.55)'
+            : free
+              ? '#34D399'
+              : '#F87171'
   const borderColor =
     check.shape === 'empty'
       ? 'rgba(255,255,255,0.12)'
@@ -149,7 +161,11 @@ export function ClaimHandlePage() {
             maxLength={HANDLE_MAX}
           />
           <span className={styles.icon} style={{ color }} aria-hidden="true">
-            {check.shape === 'empty' || (check.valid && answered === null) ? '' : good ? '✓' : '✕'}
+            {check.shape === 'empty' || (check.valid && answered === null && !isOwnHandle)
+              ? ''
+              : good
+                ? '✓'
+                : '✕'}
           </span>
         </div>
         <div className={styles.message} style={{ color }} role="status">
