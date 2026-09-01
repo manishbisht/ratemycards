@@ -68,6 +68,18 @@ credential is valid and signing in again will not help. On the shared-token path
 `c.get('user')` is `undefined` — the token identifies nobody, so there is no
 audit trail behind it.
 
+### Public profiles are the exception
+
+`GET /v1/profiles/:handle` needs no session at all — it is the one
+unauthenticated read of a person's data anywhere in this API. What it may
+return is drawn narrowly: the projection in `modules/profiles/profileTypes.ts`
+(`toPublicProfile`) is the security boundary, built by naming each field
+rather than spreading and deleting a `StoredWallet`, so a field added there
+later cannot leak through a projection that has to be edited by hand to carry
+it. A handle is freed the moment its owner renames — `#/u/<old-handle>` then
+resolves to whoever claims it next, deliberately; see the design doc for the
+alternative considered.
+
 ### Who is an admin
 
 `users.is_admin` (migration `0013`), granted from `ADMIN_EMAILS` — a
@@ -178,6 +190,9 @@ Reads are public. Writes need `Authorization: Bearer $ADMIN_TOKEN`.
 | `PATCH` | `/v1/cards/:id` | admin — partial update |
 | `DELETE` | `/v1/cards/:id` | admin — soft delete (`is_active = 0`) |
 | `GET` | `/v1/users/me` | session — the caller's own row, and only ever their own |
+| `PUT` | `/v1/users/me/handle` | session — claims or changes the public handle |
+| `GET` | `/v1/handles/:handle` | whether claiming would succeed |
+| `GET` | `/v1/profiles/:handle` | public — somebody's score and verified cards |
 | `POST` | `/v1/webhooks/clerk` | signed by Clerk — keeps `users` in step |
 | `GET` | `/v1/wallet` | session — the stored wallet, cards resolved and scored |
 | `POST` | `/v1/wallet/merge` | session — folds local picks in; unions, never overwrites |

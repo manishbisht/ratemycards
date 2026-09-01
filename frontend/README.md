@@ -92,6 +92,15 @@ The wallet is **client-side only**: `state.picked` holds card ids in
 `localStorage` under `ratemycards.wallet.v2`. There is no account and nothing is
 sent to the server except the ids, in exchange for a score.
 
+`state.handle` is the exception, and lives on the same slice only for
+convenience. The public handle itself is **server-owned** — claimed through
+`PUT /v1/users/me/handle`, unique across all users, and hydrated into this
+slice from `GET /v1/users/me` at sign-in (`useClerkUserSync`), so it survives
+clearing `localStorage` or signing in on a different device. `ProfilePage`
+still renders your own profile straight from this local copy rather than
+fetching it, so it stays instant and correct while a claim is still settling;
+anyone else's profile is fetched from `GET /v1/profiles/:handle`.
+
 - The Redux catalog slice is loaded when the app starts; search remains local
   to the picker and re-queries the API, debounced, so the list always reflects
   the live catalog.

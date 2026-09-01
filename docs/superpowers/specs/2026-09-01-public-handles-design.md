@@ -98,7 +98,9 @@ a call into `wallet`, the way `cards/routes.ts` calls
 
 ### Reserved handles
 
-`admin`, `api`, `www`, `u`, `health` are refused with a 409. There is no routing
+`admin`, `api`, `www`, `u`, `health` are refused with a 400 — the validator catches
+them before any database work, so it is a bad value rather than a conflict.
+There is no routing
 collision to avoid — profiles live under `#/u/`, so `admin` as a handle would
 resolve fine — the point is that `@admin` on a page about somebody's money reads
 as authority nobody granted. One array in `validate.ts`.
@@ -110,7 +112,8 @@ as authority nobody granted. One array in `validate.ts`.
 | Not signed in | 401 |
 | No verified card | 409, naming verification |
 | Malformed handle on claim | 400, with `details` from the accumulator validator |
-| Already taken, or reserved | 409 |
+| Reserved handle on claim | 400, with `details` naming it as reserved |
+| Already taken | 409 |
 | `GET /v1/handles/:handle`, unclaimed | `{ available: true }` |
 | `GET /v1/handles/:handle`, taken **or reserved** | `{ available: false }` |
 | `GET /v1/handles/:handle`, malformed | `{ available: false }`, not a 400 |

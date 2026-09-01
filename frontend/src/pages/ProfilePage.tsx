@@ -1,13 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '../components/Button'
 import { FannedDeck } from '../components/FannedDeck'
 import { Screen } from '../components/Screen'
 import type { GlowSpec } from '../components/Screen'
 import { TierPill } from '../components/TierPill'
-import type { Tier } from '../data/api'
+import { fetchProfile } from '../data/api'
+import type { PublicProfile, Tier } from '../data/api'
 import { PUBLIC_DOMAIN, profileUrl } from '../data/brand'
 import type { Card } from '../data/cards'
-import { demoProfile } from '../data/demoProfile'
 import { summaryFor } from '../data/scoring'
 import { navigate } from '../router/hashRouter'
 import { useWalletScore } from '../state/useWalletScore'
@@ -38,8 +38,38 @@ export function ProfilePage({ username }: { username: string }) {
   const rating = score.score
   const [copied, setCopied] = useState(false)
 
+  // Your own profile renders from local state, so it is instant and correct
+  // while a claim is still settling. Anyone else's comes from the API.
   const own = state.handle === username
-  const demo = demoProfile(username)
+
+  // One settled answer, tagged with the handle it belongs to. Derived rather
+  // than reset at the top of the effect: this project's react-hooks config
+  // rejects a synchronous setState in an effect body, and keying the result
+  // means a late reply for a previous handle can never be shown against this
+  // one.
+  const [settled, setSettled] = useState<
+    { handle: string; profile: PublicProfile } | { handle: string; profile: null } | null
+  >(null)
+
+  useEffect(() => {
+    if (own) return
+
+    const controller = new AbortController()
+
+    fetchProfile(username, controller.signal)
+      .then((profile) => setSettled({ handle: username, profile }))
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setSettled({ handle: username, profile: null })
+      })
+
+    return () => controller.abort()
+  }, [own, username])
+
+  const answer = settled?.handle === username ? settled : null
+  const fetched = answer?.profile ?? null
+  /** Settled, and there is nothing there — as opposed to still loading. */
+  const missing = answer !== null && answer.profile === null
 
   const view: ProfileView | null = own
     ? {
@@ -51,11 +81,34 @@ export function ProfilePage({ username }: { username: string }) {
         cards: verifiedCards,
         isOwn: true,
       }
-    : demo
-      ? { ...demo, isOwn: false }
+    : fetched
+      ? {
+          handle: fetched.handle,
+          rating: fetched.score,
+          tier: fetched.tier,
+          verifiedCount: fetched.cardCount,
+          summary: summaryFor(fetched.score, fetched.cardCount),
+          // The public payload carries no fee or selectability, and the deck
+          // does not render them.
+          cards: fetched.cards.map((card) => ({
+            id: card.id,
+            name: card.name,
+            issuer: card.issuer,
+            short: `${card.bank.name}\n${card.name}`,
+            joiningFee: 0,
+            annualFee: 0,
+            selectable: true,
+          })),
+          isOwn: false,
+        }
       : null
 
   if (!view) {
+    // A fetch still in flight is not a missing profile. Rendering the empty
+    // screen here rather than the copy below is what stops "No wallet here
+    // yet" flashing on every profile that does exist.
+    if (!missing) return <Screen glows={GLOWS} className={styles.missing}>{null}</Screen>
+
     return (
       <Screen glows={GLOWS} className={styles.missing}>
         <div className={styles.eyebrow}>{PUBLIC_DOMAIN}</div>
