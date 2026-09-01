@@ -1,5 +1,6 @@
 import { useUser } from '@clerk/react'
 import { useEffect } from 'react'
+import { fetchMe } from '../data/api'
 import { useAppDispatch, useAppSelector } from '../store/hooks'
 import { walletActions } from '../store/walletSlice'
 
@@ -32,4 +33,24 @@ export function useClerkUserSync(): void {
 
     dispatch(walletActions.signIn({ name: name ?? email ?? 'You', email: email ?? '' }))
   }, [dispatch, isLoaded, isSignedIn, hasStoredUser, name, email])
+
+  // The handle lives on the server, not in this browser. Without this, signing
+  // in on a second device looks like you never claimed one -- Redux is
+  // populated from localStorage, which is per-browser by definition.
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return
+
+    const controller = new AbortController()
+
+    fetchMe(controller.signal)
+      .then((profile) => {
+        if (profile.handle) dispatch(walletActions.claimHandle(profile.handle))
+      })
+      .catch(() => {
+        // Not fatal. The claim screen re-checks against the server anyway, and
+        // a failure here only means the handle is not shown until next load.
+      })
+
+    return () => controller.abort()
+  }, [dispatch, isLoaded, isSignedIn])
 }

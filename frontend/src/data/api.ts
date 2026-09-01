@@ -116,6 +116,8 @@ export type Me = {
   imageUrl: string | null
   isActive: boolean
   isAdmin: boolean
+  /** The claimed public handle, or null. */
+  handle: string | null
 }
 
 /**
@@ -131,6 +133,57 @@ export function fetchMe(signal?: AbortSignal, token?: string | null): Promise<Me
     signal,
     ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
   })
+}
+
+/* --------------------------------------------------------------- handles */
+
+/**
+ * Whether claiming would succeed. Never throws for a bad handle -- the endpoint
+ * answers `false` rather than erroring, so this can run on every keystroke.
+ */
+export async function checkHandleAvailability(
+  handle: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const body = await request<{ handle: string; available: boolean }>(
+    `/v1/handles/${encodeURIComponent(handle)}`,
+    { signal },
+  )
+  return body.available
+}
+
+/**
+ * Claims or changes the caller's handle. A 409 means somebody took it between
+ * the availability check and this call, or that nothing is verified yet.
+ */
+export function claimHandle(handle: string): Promise<Me> {
+  return request<Me>('/v1/users/me/handle', {
+    method: 'PUT',
+    body: JSON.stringify({ handle }),
+  })
+}
+
+/* -------------------------------------------------------------- profiles */
+
+export type PublicProfileCard = {
+  id: string
+  name: string
+  issuer: string
+  bank: { id: string; name: string }
+}
+
+export type PublicProfile = {
+  handle: string
+  score: number
+  maxScore: number
+  tier: Tier
+  cardCount: number
+  cards: PublicProfileCard[]
+}
+
+/** Public: no session required, and a 404 means nobody holds that handle. */
+export function fetchProfile(handle: string, signal?: AbortSignal): Promise<PublicProfile> {
+  return request<PublicProfile>(`/v1/profiles/${encodeURIComponent(handle)}`, { signal })
 }
 
 /* ------------------------------------------------------------------ cards */

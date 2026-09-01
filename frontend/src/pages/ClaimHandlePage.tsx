@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { Button } from '../components/Button'
 import { Screen } from '../components/Screen'
 import type { GlowSpec } from '../components/Screen'
+import { ApiError } from '../data/api'
+import { checkHandleAvailability, claimHandle } from '../data/api'
 import { PROFILE_PREFIX } from '../data/brand'
-import { checkHandle, HANDLE_MAX, HANDLE_MIN } from '../data/handles'
+import { checkHandleShape, HANDLE_MAX, HANDLE_MIN } from '../data/handles'
 import { navigate } from '../router/hashRouter'
 import { useAppDispatch, useAppSelector } from '../store/hooks'
 import { selectChosenCards, selectWallet } from '../store/selectors'
@@ -21,6 +23,17 @@ export function ClaimHandlePage() {
   const chosenCards = useAppSelector(selectChosenCards)
   const [handle, setHandle] = useState(state.handle ?? '')
 
+  const check = checkHandleShape(handle)
+
+  // 'unknown' until the server answers. Keyed to the handle it describes, so a
+  // late reply for a name that has since been edited is ignored rather than
+  // shown against the new one.
+  const [availability, setAvailability] = useState<{ handle: string; free: boolean } | null>(null)
+  const [claiming, setClaiming] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const candidate = check.valid ? check.normalized : ''
+
   // Claiming is the end of the flow: sign in, verify at least one card, then
   // pick a handle. Deep links that skip a step land on the step they skipped,
   // so a public profile never exists with nothing verified behind it.
@@ -31,16 +44,80 @@ export function ClaimHandlePage() {
     else if (!confirmed) navigate({ kind: 'verify' })
   }, [signedIn, confirmed])
 
+  useEffect(() => {
+    if (candidate === '') return
+
+    const controller = new AbortController()
+    // Same shape as useWalletScore: debounce, and abort the in-flight request
+    // on cleanup so a fast typist does not queue a dozen answers.
+    const timer = setTimeout(() => {
+      checkHandleAvailability(candidate, controller.signal)
+        .then((free) => setAvailability({ handle: candidate, free }))
+        .catch(() => {
+          /* Offline or aborted. The claim itself is the real check. */
+        })
+    }, 250)
+
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [candidate])
+
   if (!signedIn || !confirmed) return null
 
-  const check = checkHandle(handle)
-  const color = check.state === 'empty' ? 'rgba(255,255,255,0.35)' : check.available ? '#34D399' : '#F87171'
+  const answered = availability?.handle === candidate ? availability : null
+  const free = answered?.free ?? false
+  const canClaim = check.valid && free && !claiming
+
+  const message = error
+    ? error
+    : !check.valid
+      ? check.message
+      : answered === null
+        ? 'Checking…'
+        : free
+          ? 'Available'
+          : 'Taken. Try adding a number or an underscore.'
+
+  const good = check.valid && free && error === null
+  const color =
+    check.shape === 'empty'
+      ? 'rgba(255,255,255,0.35)'
+      : !check.valid || error
+        ? '#F87171'
+        : answered === null
+          ? 'rgba(255,255,255,0.55)'
+          : free
+            ? '#34D399'
+            : '#F87171'
   const borderColor =
-    check.state === 'empty'
+    check.shape === 'empty'
       ? 'rgba(255,255,255,0.12)'
-      : check.available
+      : good
         ? 'rgba(52,211,153,0.5)'
         : 'rgba(248,113,113,0.5)'
+
+  const submit = async () => {
+    setClaiming(true)
+    setError(null)
+    try {
+      const claimed = await claimHandle(check.normalized)
+      dispatch(walletActions.claimHandle(claimed.handle ?? check.normalized))
+      navigate({ kind: 'profile', username: claimed.handle ?? check.normalized })
+    } catch (err) {
+      // A 409 between the availability check and here is the whole reason this
+      // renders in place rather than navigating optimistically.
+      setError(
+        err instanceof ApiError
+          ? (err.details?.[0] ?? err.message)
+          : 'Could not claim that handle.',
+      )
+      setAvailability({ handle: candidate, free: false })
+    } finally {
+      setClaiming(false)
+    }
+  }
 
   return (
     <Screen glows={GLOWS} className={styles.content}>
@@ -49,10 +126,6 @@ export function ClaimHandlePage() {
 
       <div className={styles.panel}>
         <div className={styles.label}>Your URL</div>
-        {/* The domain leads and the handle follows, because that is the shape
-            of the real link -- there is no per-handle subdomain. It is set
-            smaller and grey so the handle, which is the part being chosen,
-            still carries the line. */}
         <div className={styles.url}>
           <span className={styles.domain}>{PROFILE_PREFIX}</span>
           <span style={{ color }}>{check.normalized || 'yourname'}</span>
@@ -62,7 +135,10 @@ export function ClaimHandlePage() {
           <input
             className={styles.input}
             value={handle}
-            onChange={(e) => setHandle(e.target.value)}
+            onChange={(e) => {
+              setHandle(e.target.value)
+              setError(null)
+            }}
             placeholder="yourname"
             aria-label="Your handle"
             autoComplete="off"
@@ -72,23 +148,17 @@ export function ClaimHandlePage() {
             maxLength={HANDLE_MAX}
           />
           <span className={styles.icon} style={{ color }} aria-hidden="true">
-            {check.state === 'empty' ? '' : check.available ? '✓' : '✕'}
+            {check.shape === 'empty' || (check.valid && answered === null) ? '' : good ? '✓' : '✕'}
           </span>
         </div>
         <div className={styles.message} style={{ color }} role="status">
-          {check.message}
+          {message}
         </div>
       </div>
 
       <div className={styles.footer}>
-        <Button
-          disabled={!check.available}
-          onClick={() => {
-            dispatch(walletActions.claimHandle(check.normalized))
-            navigate({ kind: 'profile', username: check.normalized })
-          }}
-        >
-          Claim handle
+        <Button disabled={!canClaim} onClick={submit}>
+          {claiming ? 'Claiming…' : 'Claim handle'}
         </Button>
         <div className={styles.footnote}>
           Letters, numbers and underscores. {HANDLE_MIN}–{HANDLE_MAX} characters.
