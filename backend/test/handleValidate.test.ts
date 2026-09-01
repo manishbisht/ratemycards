@@ -52,4 +52,11 @@ describe('validateHandleInput', () => {
   it('rejects a reserved handle regardless of case', () => {
     expect(errorsFor({ handle: 'ADMIN' }).join(' ')).toMatch(/reserved/i)
   })
+
+  it('reports every broken rule at once, not just the first', () => {
+    const errors = errorsFor({ handle: '!!' })
+    expect(errors.length).toBeGreaterThan(1)
+    expect(errors.join(' ')).toMatch(/3 to 20/)
+    expect(errors.join(' ')).toMatch(/letters, numbers and underscores/)
+  })
 })
