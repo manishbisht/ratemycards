@@ -1,3 +1,4 @@
+import { ApiError } from '../../http/errors'
 import { generateUserId } from './userTypes'
 import type { ClerkIdentity, User } from './userTypes'
 
@@ -8,9 +9,10 @@ type UserRow = {
   image_url: string | null
   is_active: number
   is_admin: number
+  handle: string | null
 }
 
-const USER_COLUMNS = 'id, email, name, image_url, is_active, is_admin'
+const USER_COLUMNS = 'id, email, name, image_url, is_active, is_admin, handle'
 const NOW = "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')"
 
 function toUser(row: UserRow): User {
@@ -21,6 +23,7 @@ function toUser(row: UserRow): User {
     imageUrl: row.image_url,
     isActive: row.is_active === 1,
     isAdmin: row.is_admin === 1,
+    handle: row.handle,
   }
 }
 
@@ -134,4 +137,52 @@ export async function deactivateUserByClerkId(db: D1Database, clerkId: string): 
     .prepare(`UPDATE users SET is_active = 0, updated_at = ${NOW} WHERE clerk_id = ?`)
     .bind(clerkId)
     .run()
+}
+
+export async function getUserByHandle(db: D1Database, handle: string): Promise<User | null> {
+  const row = await db
+    .prepare(`SELECT ${USER_COLUMNS} FROM users WHERE handle = ?`)
+    .bind(handle)
+    .first<UserRow>()
+  return row ? toUser(row) : null
+}
+
+/**
+ * Claims or changes a handle.
+ *
+ * The conflict is detected by letting the unique index reject the write rather
+ * than by looking first: a read-then-write races, and the window is exactly the
+ * moment two people are racing for the same name.
+ *
+ * Renaming frees the previous value as a side effect of this being one column.
+ */
+export async function setHandle(db: D1Database, userId: string, handle: string): Promise<User> {
+  try {
+    await db
+      .prepare(`UPDATE users SET handle = ?, updated_at = ${NOW} WHERE id = ?`)
+      .bind(handle, userId)
+      .run()
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      throw ApiError.conflict(`'${handle}' is already taken.`)
+    }
+    throw err
+  }
+
+  const user = await db
+    .prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`)
+    .bind(userId)
+    .first<UserRow>()
+  if (!user) throw ApiError.notFound('Your account')
+  return toUser(user)
+}
+
+/**
+ * The fourth copy in this codebase -- banks/queries.ts:126,
+ * networks/queries.ts:231, scoring/queries.ts:220 all carry the same private
+ * helper. Following the house pattern rather than refactoring four modules
+ * while adding a feature.
+ */
+function isUniqueViolation(err: unknown): boolean {
+  return err instanceof Error && /UNIQUE constraint failed/i.test(err.message)
 }

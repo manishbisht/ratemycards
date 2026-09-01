@@ -190,4 +190,22 @@ describe('user events', () => {
 
     expect(res.status).toBe(200)
   })
+
+  it('leaves an existing handle alone', async () => {
+    await send(userCreated('clerk_handle_keeper'))
+    await env.DB.prepare(
+      "UPDATE users SET handle = 'webhookheld' WHERE clerk_id = 'clerk_handle_keeper'",
+    ).run()
+
+    // A later event -- a changed name, a new avatar -- must not touch it.
+    await send({
+      ...userCreated('clerk_handle_keeper', { first_name: 'Renamed' }),
+      type: 'user.updated',
+    })
+
+    const row = await env.DB.prepare(
+      "SELECT handle FROM users WHERE clerk_id = 'clerk_handle_keeper'",
+    ).first<{ handle: string | null }>()
+    expect(row?.handle).toBe('webhookheld')
+  })
 })

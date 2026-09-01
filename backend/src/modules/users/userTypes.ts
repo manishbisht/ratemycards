@@ -16,6 +16,8 @@ export type User = {
   email: string | null
   name: string | null
   imageUrl: string | null
+  /** The public profile name, or null until one is claimed. */
+  handle: string | null
   isActive: boolean
   /**
    * Whether this person may drive the admin panel. Granted from the
@@ -35,4 +37,23 @@ export type ClerkIdentity = {
   email?: string | null
   name?: string | null
   imageUrl?: string | null
+}
+
+/**
+ * Mirrors the CHECK in migration 0014 and HANDLE_PATTERN in the frontend's
+ * data/handles.ts. Change one, change all three.
+ */
+export const HANDLE_MIN = 3
+export const HANDLE_MAX = 20
+export const HANDLE_PATTERN = new RegExp(`^[a-z0-9_]{${HANDLE_MIN},${HANDLE_MAX}}$`)
+
+/**
+ * Not a routing concern -- profiles live under `#/u/`, so `admin` as a handle
+ * would resolve perfectly well. The point is that `@admin` on a page about
+ * somebody's money reads as authority nobody granted.
+ */
+export const RESERVED_HANDLES: readonly string[] = ['admin', 'api', 'www', 'u', 'health']
+
+export function isReservedHandle(value: string): boolean {
+  return RESERVED_HANDLES.includes(value)
 }
