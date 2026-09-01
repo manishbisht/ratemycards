@@ -203,15 +203,20 @@ function CardTable({ cards, onChanged }: { cards: AdminCard[]; onChanged: () => 
             <td className={styles.muted}>{card.country}</td>
             <td className={styles.num}>{card.joiningFee.toLocaleString('en-IN')}</td>
             <td className={styles.num}>{card.annualFee.toLocaleString('en-IN')}</td>
-            <td className={styles.status}>
-              {card.isActive ? null : <Pill tone="bad">Inactive</Pill>}
-              {/* Selectable means at least one BIN prefix is on file. Without
-                  one the card cannot be verified and is hidden from browse. */}
-              {card.selectable ? (
-                <Pill tone="good">Selectable</Pill>
-              ) : (
-                <Pill tone="warn">No BINs</Pill>
-              )}
+            <td>
+              {/* The flex container is this span, not the cell: `display: flex`
+                  on a <td> overrides `display: table-cell` and drops it out of
+                  the column alignment the rest of the row relies on. */}
+              <span className={styles.status}>
+                {card.isActive ? null : <Pill tone="bad">Inactive</Pill>}
+                {/* Selectable means at least one BIN prefix is on file. Without
+                    one the card cannot be verified and is hidden from browse. */}
+                {card.selectable ? (
+                  <Pill tone="good">Selectable</Pill>
+                ) : (
+                  <Pill tone="warn">No BINs</Pill>
+                )}
+              </span>
             </td>
             <td className={styles.rowActions}>
               <Button variant="ghost" onClick={() => toggle(card)} disabled={busyId === card.id}>

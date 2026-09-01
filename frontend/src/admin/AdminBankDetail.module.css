@@ -69,11 +69,12 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* On a span inside the cell, never on the <td> itself -- see the note in the
+   component. The cell keeps its own padding from `.table td`. */
 .status {
-  display: flex;
+  display: inline-flex;
   gap: 6px;
   align-items: center;
-  padding-top: 12px;
 }
 
 .rowActions {
