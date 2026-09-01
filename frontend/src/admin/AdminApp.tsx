@@ -12,7 +12,8 @@ import styles from './AdminApp.module.css'
  * The console's root: the desktop gate, then the access check, then a screen.
  *
  * Mounted instead of the consumer app rather than inside it, so none of the
- * phone chrome -- DesktopGate, AuthBar, the Screen shell -- comes along.
+ * phone chrome -- the PhoneFrame column, AuthBar, the Screen shell -- comes
+ * along. The console wants the whole window.
  */
 export function AdminApp({ route }: { route: AdminRoute }) {
   return (

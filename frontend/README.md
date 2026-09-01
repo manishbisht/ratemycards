@@ -33,8 +33,15 @@ these as public configuration: never put private credentials, tokens, or other
 secrets in them. Map each new `VITE_*` Environment secret explicitly in
 `.github/workflows/deploy.yml` so the build's public configuration is reviewable.
 
-The app gates itself to viewports ≤ 700px wide (`DesktopGate`), so use a narrow
-window or device emulation. The one exception is `#/admin` — see below.
+The app is drawn as a phone screen. On anything wider it runs as a 390px column
+centred in the window (`PhoneFrame`), with the backdrop and its glows showing
+either side; on a phone the column is the whole screen. That is pure CSS — a
+`max-width` that simply does not bind below 390px — so there is one code path
+for both and nothing remounts when a window is resized. Develop at whatever
+width suits you.
+
+`#/admin` is the exception, and the only place left that refuses a viewport
+outright — see below.
 
 ## The admin console
 
@@ -42,7 +49,7 @@ window or device emulation. The one exception is `#/admin` — see below.
 each bank issues, the networks a card runs on with their accepted BIN prefixes,
 the network list itself, and the scoring rubric. It lives in `src/admin/` and
 replaces the page tree rather than mounting inside it, so none of the phone
-chrome — `DesktopGate`, `AuthBar`, `Screen` — comes along.
+chrome — the `PhoneFrame` column, `AuthBar`, `Screen` — comes along.
 
 | Route | Screen |
 | --- | --- |
@@ -52,8 +59,8 @@ chrome — `DesktopGate`, `AuthBar`, `Screen` — comes along.
 | `#/admin/networks` | payment networks and their BIN prefix rules |
 | `#/admin/criteria` | the scoring rubric |
 
-`AdminGate` is the mirror image of `DesktopGate`: it wants **≥ 900px**, so there
-is a deliberate band between the two where neither runs. Access comes from
+`AdminGate` wants **≥ 900px** and refuses below it, because a master-detail
+with tables in it has a floor the app does not. Access comes from
 `GET /v1/users/me` → `isAdmin`, which the backend grants from its `ADMIN_EMAILS`
 secret; a signed-in non-admin sees a "No access" panel rather than a fake 404,
 because the route table ships in the public bundle and obscurity would buy

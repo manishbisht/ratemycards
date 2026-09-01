@@ -6,7 +6,7 @@ import { useApiAuth } from './auth/useApiAuth'
 import { useClerkUserSync } from './auth/useClerkUserSync'
 import { useWalletServerSync } from './auth/useWalletServerSync'
 import { AuthBar } from './components/AuthBar'
-import { DesktopGate } from './components/DesktopGate'
+import { PhoneFrame } from './components/PhoneFrame'
 import { CardPickerPage } from './pages/CardPickerPage'
 import { ClaimHandlePage } from './pages/ClaimHandlePage'
 import { LandingPage } from './pages/LandingPage'
@@ -78,22 +78,22 @@ export default function App() {
   // route: the hash at that moment is still whatever it was before the trip.
   if (isSsoCallback()) {
     return (
-      <DesktopGate>
+      <PhoneFrame>
         <SsoCallbackPage />
-      </DesktopGate>
+      </PhoneFrame>
     )
   }
 
-  // The console is desktop-only and carries its own chrome, so it replaces the
-  // page tree rather than mounting inside the phone-only gate.
+  // The console wants the whole window and carries its own chrome, so it
+  // replaces the page tree rather than mounting inside the phone column.
   if (isAdminRoute(route)) return <AdminApp route={route} />
 
   return (
-    <DesktopGate>
+    <PhoneFrame>
       {/* The login screen carries its own sign-in controls, so the floating
           bar would only repeat itself there. */}
       {route.kind !== 'login' && <AuthBar />}
       {renderRoute(route)}
-    </DesktopGate>
+    </PhoneFrame>
   )
 }

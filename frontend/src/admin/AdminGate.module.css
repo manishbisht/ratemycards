@@ -1,6 +1,5 @@
-/* The console's own refusal screen. Shares DesktopGate's shape so the two read
-   as one family, minus the decorative glows -- this one is chrome for a tool,
-   not a landing. */
+/* The console's refusal screen, minus the decorative glows the app's own
+   screens carry -- this is chrome for a tool, not a landing. */
 
 .gate {
   height: 100dvh;

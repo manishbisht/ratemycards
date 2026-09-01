@@ -1,5 +1,8 @@
+/* Absolute, not fixed: the containing block is PhoneFrame's column, so on a
+   desktop this stays in the app's top-right instead of the window's. On a
+   phone the column is the viewport, so the two are the same thing. */
 .bar {
-  position: fixed;
+  position: absolute;
   top: max(20px, calc(var(--inset-top) + 12px));
   right: 20px;
   z-index: 40;

@@ -4,20 +4,19 @@ import styles from './AdminGate.module.css'
 
 /**
  * Below this the console is unusable: the shell is a two-column master-detail
- * with tables in it. Wider than DesktopGate's 700px breakpoint on purpose --
- * there is a band between the two where neither the app nor the console runs,
- * and a tablet landing there should be told rather than shown a broken table.
+ * with tables in it. A tablet landing under it should be told, rather than
+ * shown a table with no room to be one.
  */
 export const ADMIN_QUERY = '(min-width: 900px)'
 
 /**
- * The mirror image of DesktopGate: the product is phones-only, the console is
- * desktop-only, and each refuses to mount the other's tree.
+ * The console's counterpart to PhoneFrame. The app adapts to any width -- it
+ * runs as a centred phone column once there is room -- but the console cannot:
+ * a master-detail with tables in it has a floor, and below that floor there is
+ * nothing sensible to render.
  *
- * A separate component rather than a `mode` prop on DesktopGate because the two
- * share only their mechanism -- the copy, the breakpoint and the audience are
- * all different, and keeping the console's chrome inside src/admin means the
- * consumer app is untouched by any of it.
+ * So this is the one place left that refuses rather than adapts, and it lives
+ * in src/admin so the consumer app is untouched by it.
  */
 export function AdminGate({ children }: { children: ReactNode }) {
   const isWideEnough = useMediaQuery(ADMIN_QUERY)

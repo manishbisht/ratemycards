@@ -1,0 +1,62 @@
+/* Fills the window and sits behind the column. On a phone the frame covers it
+   completely; on a desktop it is the whole of what the gutters show. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: var(--bg);
+  pointer-events: none;
+}
+
+/* The same two glows the desktop notice used to draw, kept verbatim so the
+   gutters stay inside the palette tokens.css already fixes. */
+.glowA,
+.glowB {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.glowA {
+  top: -220px;
+  left: -120px;
+  width: 760px;
+  height: 760px;
+  background: radial-gradient(circle at 50% 50%, rgba(124, 58, 237, 0.42) 0%, transparent 70%);
+}
+
+.glowB {
+  bottom: -320px;
+  right: -160px;
+  width: 820px;
+  height: 820px;
+  background: radial-gradient(circle at 50% 50%, rgba(251, 146, 60, 0.2) 0%, transparent 70%);
+}
+
+/* 390px is the design source's frame width -- see the note in Screen.tsx. No
+   breakpoint: on a phone the max-width never binds, so this is the full screen
+   and nothing about the mobile layout changes.
+
+   `position: relative` is load-bearing. AuthBar is absolutely positioned and
+   resolves against this, which is what keeps it in the column's top-right
+   rather than the window's.
+
+   Opaque, so the backdrop's glows stop at the column edge and the screens'
+   own glows are the only ones inside it. */
+.frame {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 390px;
+  height: 100dvh;
+  margin-inline: auto;
+  background: var(--bg);
+}
+
+/* Only once there is room either side. Below this the frame is the whole
+   screen and these would be a hairline down each edge of the phone. */
+@media (min-width: 700px) {
+  .frame {
+    border-inline: 1px solid var(--hairline);
+  }
+}
