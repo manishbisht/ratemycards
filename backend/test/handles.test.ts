@@ -1,6 +1,8 @@
 import { SELF, env } from 'cloudflare:test'
 import { signJwt } from '@clerk/backend/jwt'
 import { describe, expect, it } from 'vitest'
+import { ApiError } from '../src/http/errors'
+import { getUserByHandle, setHandle } from '../src/modules/users/queries'
 
 /**
  * Handles: the column, the claim, and availability.
@@ -27,6 +29,25 @@ async function me(token: string) {
     headers: { Authorization: `Bearer ${token}` },
   })
   return { status: res.status, body: (await res.json()) as any }
+}
+
+/**
+ * A user row with no session behind it -- setHandle/getUserByHandle operate on
+ * `users.id`, not the Clerk id a token carries, so the tests below need a row
+ * they can address by that id directly rather than going through /v1/users/me.
+ *
+ * The literal id must satisfy 0007's CHECK (`user_` + 32 lowercase hex), the
+ * same rule 'user_' || lower(hex(randomblob(16))) already satisfies elsewhere
+ * in this codebase (see adminIdentity.test.ts).
+ */
+async function createUser(clerkId: string): Promise<string> {
+  const row = await env.DB.prepare(
+    "INSERT INTO users (id, clerk_id) VALUES ('user_' || lower(hex(randomblob(16))), ?) RETURNING id",
+  )
+    .bind(clerkId)
+    .first<{ id: string }>()
+  if (!row) throw new Error(`failed to insert a user row for '${clerkId}'`)
+  return row.id
 }
 
 describe('users.handle', () => {
@@ -74,5 +95,56 @@ describe('users.handle', () => {
         bad,
       ).rejects.toThrow(/CHECK/i)
     }
+  })
+})
+
+describe('setHandle and getUserByHandle', () => {
+  it('sets a handle and returns the updated user with it populated', async () => {
+    const id = await createUser('clerk_handle_direct_set')
+
+    const user = await setHandle(env.DB, id, 'directclaim')
+    expect(user.id).toBe(id)
+    expect(user.handle).toBe('directclaim')
+  })
+
+  it('round-trips through getUserByHandle, and returns null for a handle nobody holds', async () => {
+    const id = await createUser('clerk_handle_direct_roundtrip')
+    await setHandle(env.DB, id, 'roundtrip')
+
+    const found = await getUserByHandle(env.DB, 'roundtrip')
+    expect(found?.id).toBe(id)
+
+    expect(await getUserByHandle(env.DB, 'nobodyholdsthis')).toBeNull()
+  })
+
+  /**
+   * The load-bearing case: setHandle must translate D1's raw
+   * 'UNIQUE constraint failed' into ApiError.conflict, not let it escape as an
+   * unhandled 500. Asserting on `.code` rather than just `rejects.toThrow`
+   * pins that translation, not merely that *something* throws.
+   */
+  it('rejects the second claim of a handle with an ApiError coded conflict', async () => {
+    const first = await createUser('clerk_handle_direct_racerA')
+    const second = await createUser('clerk_handle_direct_racerB')
+
+    await setHandle(env.DB, first, 'contested')
+
+    let thrown: unknown
+    try {
+      await setHandle(env.DB, second, 'contested')
+    } catch (err) {
+      thrown = err
+    }
+
+    expect(thrown).toBeInstanceOf(ApiError)
+    expect((thrown as ApiError).code).toBe('conflict')
+  })
+
+  it('lets the same user re-send the handle they already hold', async () => {
+    const id = await createUser('clerk_handle_direct_resend')
+    await setHandle(env.DB, id, 'stable')
+
+    const again = await setHandle(env.DB, id, 'stable')
+    expect(again.handle).toBe('stable')
   })
 })
