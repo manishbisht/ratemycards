@@ -5,6 +5,7 @@ import { notFound, onError } from './http/errors'
 import { bankRoutes } from './modules/banks/routes'
 import { cardRoutes } from './modules/cards/routes'
 import { networkRoutes } from './modules/networks/routes'
+import { profileRoutes } from './modules/profiles/routes'
 import { criterionRoutes } from './modules/scoring/routes'
 import { clerkWebhookRoutes } from './modules/users/webhook'
 import { handleRoutes, userRoutes } from './modules/users/routes'
@@ -40,6 +41,7 @@ app.route('/v1/networks', networkRoutes)
 app.route('/v1/criteria', criterionRoutes)
 app.route('/v1/users', userRoutes)
 app.route('/v1/handles', handleRoutes)
+app.route('/v1/profiles', profileRoutes)
 app.route('/v1/webhooks', clerkWebhookRoutes)
 app.route('/v1/wallet', walletRoutes)
 app.route('/v1/verifications', verificationRoutes)
