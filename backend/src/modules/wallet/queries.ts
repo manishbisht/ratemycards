@@ -168,3 +168,50 @@ export async function countVerifiedCards(db: D1Database, userId: string): Promis
 
   return row?.n ?? 0
 }
+
+/**
+ * The verified half of a wallet, resolved and scored on its own.
+ *
+ * A public profile shows only what somebody has proved they hold, and it scores
+ * only that -- which is what the frontend already does, so this moves the rule
+ * server-side rather than inventing it.
+ *
+ * Retired and BIN-less cards resolve here for the same reason they do in
+ * getWallet: holding a card the catalog dropped should not quietly cost the
+ * points it was worth.
+ */
+export async function getVerifiedWallet(db: D1Database, userId: string): Promise<StoredWallet> {
+  const rows = (await listWalletRows(db, userId)).filter(
+    (row) => row.verification_status === 'verified',
+  )
+  const ids = rows.map((row) => row.card_id)
+
+  if (ids.length === 0) {
+    return { cards: [], score: scoreWallet([], []) }
+  }
+
+  const { cards } = await listCards(db, {
+    ids,
+    includeInactive: true,
+    includeUnselectable: true,
+    limit: ids.length,
+    offset: 0,
+  })
+
+  const byId = new Map(cards.map((card) => [card.id, card]))
+  const walletCards: WalletCard[] = []
+
+  // Driven by the rows, so the order they were added survives.
+  for (const row of rows) {
+    const card = byId.get(row.card_id)
+    if (!card) continue
+
+    walletCards.push({
+      card: toPublicCard(card),
+      verificationStatus: row.verification_status,
+      verifiedAt: row.verified_at,
+    })
+  }
+
+  return { cards: walletCards, score: scoreWallet(cards, ids) }
+}
