@@ -5,6 +5,7 @@
  */
 
 import { useEffect } from 'react'
+import { isAdminRoute } from '../router/hashRouter'
 import type { Route } from '../router/hashRouter'
 
 /**
@@ -33,7 +34,11 @@ const TAG_URL = 'https://www.clarity.ms/tag/'
  * the dashboard and hand a third party a list of our handles.
  */
 function pageLabel(route: Route): string {
-  return route.kind === 'profile' ? 'u/:username' : route.kind
+  if (route.kind === 'profile') return 'u/:username'
+  // The console is us, not a visitor. One bucket keeps our own sessions from
+  // fragmenting the dashboard, and keeps bank and card ids out of it.
+  if (isAdminRoute(route)) return 'admin'
+  return route.kind
 }
 
 /** Injects the tag. Call once, before the first render. */

@@ -1,0 +1,76 @@
+.rail {
+  padding: 16px 14px 24px;
+}
+
+.railHead {
+  margin-bottom: 12px;
+  padding: 0 10px;
+}
+
+.railList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.railItem,
+.railItemOn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  border: none;
+  border-radius: var(--radius-row);
+  cursor: pointer;
+  color: var(--text-secondary);
+  background: transparent;
+}
+
+.railItem:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.railItemOn {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.railCode {
+  margin-left: 8px;
+  font-size: 11.5px;
+  color: var(--text-quaternary);
+}
+
+/* -------------------------------------------------------------------- pane */
+
+.page {
+  max-width: 760px;
+}
+
+.detailHead {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.ruleRows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ruleRow {
+  display: grid;
+  grid-template-columns: 130px 1fr auto;
+  gap: 10px;
+  align-items: end;
+}

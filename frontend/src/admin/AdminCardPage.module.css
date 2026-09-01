@@ -1,0 +1,126 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 1240px;
+}
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-quaternary);
+}
+
+.crumbs a {
+  color: var(--text-tertiary);
+  text-decoration: none;
+}
+
+.crumbs a:hover {
+  color: var(--text);
+}
+
+.crumbNow {
+  color: var(--text);
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: minmax(200px, 2fr) 90px 130px 130px 130px;
+  gap: 12px;
+}
+
+/* Two editors side by side on a wide screen, stacked when the pane narrows. */
+.columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+@media (max-width: 1180px) {
+  .columns {
+    grid-template-columns: 1fr;
+  }
+
+  .fields {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+/* ---------------------------------------------------------------- networks */
+
+.networkRows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.networkRow {
+  display: grid;
+  grid-template-columns: 110px 1fr auto;
+  gap: 10px;
+  align-items: end;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.networkCode {
+  padding-bottom: 9px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.addNetwork {
+  margin-top: 14px;
+  max-width: 280px;
+}
+
+/* ------------------------------------------------------------------ scores */
+
+.scoreRows {
+  display: flex;
+  flex-direction: column;
+}
+
+.scoreRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.scoreName {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13.5px;
+}
+
+.scoreWeight {
+  font-size: 11.5px;
+  color: var(--text-quaternary);
+}
+
+.scoreInput {
+  width: 72px;
+  padding: 7px 9px;
+  font: inherit;
+  font-size: 14px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-field);
+  border-radius: var(--radius-row);
+  outline: none;
+}
+
+.scoreInput:focus {
+  border-color: var(--accent);
+}

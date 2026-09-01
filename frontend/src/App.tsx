@@ -1,3 +1,5 @@
+import { useEffect } from 'react'
+import { AdminApp } from './admin/AdminApp'
 import { useClarityPage } from './analytics/clarity'
 import { isSsoCallback } from './auth/ssoRedirect'
 import { useApiAuth } from './auth/useApiAuth'
@@ -14,13 +16,20 @@ import { ProfilePage } from './pages/ProfilePage'
 import { RatingRevealPage } from './pages/RatingRevealPage'
 import { SsoCallbackPage } from './pages/SsoCallbackPage'
 import { VerifyCardsPage } from './pages/VerifyCardsPage'
-import type { Route } from './router/hashRouter'
+import type { AdminRoute, Route } from './router/hashRouter'
+import { isAdminRoute } from './router/hashRouter'
 import { useRoute } from './router/useRoute'
 import { useAppDispatch, useAppSelector } from './store/hooks'
 import { selectCatalogStatus } from './store/selectors'
 import { loadCatalog } from './store/catalogSlice'
 
-function renderRoute(route: Route) {
+/**
+ * The phone screens. Typed against everything *except* the admin routes, which
+ * App peels off before calling this -- so the switch is genuinely exhaustive
+ * and a new route with no case here is a compile error rather than a component
+ * that silently renders nothing.
+ */
+function renderRoute(route: Exclude<Route, AdminRoute>): React.ReactNode {
   switch (route.kind) {
     case 'landing':
       return <LandingPage />
@@ -45,16 +54,21 @@ export default function App() {
   const route = useRoute()
   const dispatch = useAppDispatch()
   const catalogStatus = useAppSelector(selectCatalogStatus)
+  const onAdmin = isAdminRoute(route)
 
   useEffect(() => {
-    if (catalogStatus === 'idle') dispatch(loadCatalog())
-  }, [catalogStatus, dispatch])
+    // The console reads the catalog through its own admin endpoints, so paging
+    // the whole thing into the store would be two requests and a localStorage
+    // write for nothing.
+    if (!onAdmin && catalogStatus === 'idle') dispatch(loadCatalog())
+  }, [onAdmin, catalogStatus, dispatch])
 
   useClarityPage(route)
 
   // Order matters: the API client needs a way to reach the session token before
   // anything tries an authenticated call, and the wallet merge is an
-  // authenticated call.
+  // authenticated call. The console needs the first of these as much as the app
+  // does, so they run on every route.
   useApiAuth()
   useClerkUserSync()
   useWalletServerSync()
@@ -70,6 +84,10 @@ export default function App() {
     )
   }
 
+  // The console is desktop-only and carries its own chrome, so it replaces the
+  // page tree rather than mounting inside the phone-only gate.
+  if (isAdminRoute(route)) return <AdminApp route={route} />
+
   return (
     <DesktopGate>
       {/* The login screen carries its own sign-in controls, so the floating
@@ -79,4 +97,3 @@ export default function App() {
     </DesktopGate>
   )
 }
-import { useEffect } from 'react'

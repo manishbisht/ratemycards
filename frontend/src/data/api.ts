@@ -20,6 +20,13 @@ const BASE_URL = apiBaseUrl.replace(/\/$/, '')
  * every call site, the app registers a getter once at startup -- see
  * useApiAuth. Left unset, every request goes out anonymous, which is exactly
  * what the public catalog wants.
+ *
+ * ORDERING TRAP. This is registered from an effect in `App`, and React flushes
+ * effects child-first, so any *descendant* that fires an authenticated request
+ * from its own mount effect runs while this is still null and goes out
+ * anonymous. Callers below App that need a token on mount must pass one
+ * explicitly, the way fetchMe does -- `init.headers` is merged last in
+ * `request`, so it wins over whatever this resolves to.
  */
 let getAuthToken: (() => Promise<string | null>) | null = null
 
@@ -42,16 +49,25 @@ type ErrorBody = { error?: { code?: string; message?: string; details?: string[]
 export class ApiError extends Error {
   readonly status: number
   readonly code: string
+  /**
+   * The per-field problems behind a 400. The API's validators are
+   * accumulator-style -- they report every fault at once rather than the first
+   * -- and `message` is only ever the generic "The request body is invalid."
+   * The admin forms are the consumer: without this, "BIN '999999' is not valid
+   * for network 'visa'" never reaches the screen.
+   */
+  readonly details: string[] | undefined
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, details?: string[]) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
+    this.details = details
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const auth = await authHeader()
 
   let response: Response
@@ -75,6 +91,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       response.status,
       body.error?.code ?? 'unknown_error',
       body.error?.message ?? `Request failed (${response.status}).`,
+      body.error?.details,
     )
   }
 
@@ -83,6 +100,37 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (response.status === 204) return undefined as T
 
   return (await response.json()) as T
+}
+
+/* -------------------------------------------------------------- identity */
+
+/**
+ * The caller's own row. `isAdmin` is the only signal the app has for whether to
+ * let someone into `#/admin`, and it is read from the server rather than from a
+ * Clerk claim -- Clerk says who you are, the users table says what you may do.
+ */
+export type Me = {
+  id: string
+  email: string | null
+  name: string | null
+  imageUrl: string | null
+  isActive: boolean
+  isAdmin: boolean
+}
+
+/**
+ * `token` exists because this is the bootstrap call: the admin console asks it
+ * on mount, from a component below `App`, and child effects flush before the
+ * parent effect that registers the shared token getter. Passing the token in
+ * makes the call independent of that ordering rather than dependent on where
+ * in the tree it happens to be made. Omit it once the app is running and the
+ * registered getter is used as normal.
+ */
+export function fetchMe(signal?: AbortSignal, token?: string | null): Promise<Me> {
+  return request<Me>('/v1/users/me', {
+    signal,
+    ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+  })
 }
 
 /* ------------------------------------------------------------------ cards */

@@ -1,0 +1,57 @@
+/* The console's own refusal screen. Shares DesktopGate's shape so the two read
+   as one family, minus the decorative glows -- this one is chrome for a tool,
+   not a landing. */
+
+.gate {
+  height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: var(--bg);
+}
+
+.panel {
+  max-width: 440px;
+  padding: 40px 36px 34px;
+  border-radius: var(--radius-screen-panel);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--shadow-panel);
+  text-align: center;
+}
+
+.eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--text-label);
+}
+
+.title {
+  margin-top: 14px;
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.body {
+  margin-top: 14px;
+  font-size: 15.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.back {
+  display: inline-block;
+  margin-top: 24px;
+  font-size: 14px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.back:hover {
+  text-decoration: underline;
+}

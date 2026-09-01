@@ -34,7 +34,36 @@ secrets in them. Map each new `VITE_*` Environment secret explicitly in
 `.github/workflows/deploy.yml` so the build's public configuration is reviewable.
 
 The app gates itself to viewports ≤ 700px wide (`DesktopGate`), so use a narrow
-window or device emulation.
+window or device emulation. The one exception is `#/admin` — see below.
+
+## The admin console
+
+`#/admin` is a desktop-only console for editing the catalog: banks, the cards
+each bank issues, the networks a card runs on with their accepted BIN prefixes,
+the network list itself, and the scoring rubric. It lives in `src/admin/` and
+replaces the page tree rather than mounting inside it, so none of the phone
+chrome — `DesktopGate`, `AuthBar`, `Screen` — comes along.
+
+| Route | Screen |
+| --- | --- |
+| `#/admin`, `#/admin/banks` | banks, and the new-bank form |
+| `#/admin/banks/<bankId>` | one bank and the cards it issues |
+| `#/admin/cards/<cardId>` | a card's fields, its networks + BINs, its scores |
+| `#/admin/networks` | payment networks and their BIN prefix rules |
+| `#/admin/criteria` | the scoring rubric |
+
+`AdminGate` is the mirror image of `DesktopGate`: it wants **≥ 900px**, so there
+is a deliberate band between the two where neither runs. Access comes from
+`GET /v1/users/me` → `isAdmin`, which the backend grants from its `ADMIN_EMAILS`
+secret; a signed-in non-admin sees a "No access" panel rather than a fake 404,
+because the route table ships in the public bundle and obscurity would buy
+nothing.
+
+Two contracts worth knowing before editing these screens: a card's `networks`
+and a card's `scores` are both **replaced** by their save, never merged, so the
+forms always post the complete set; and every admin card list passes
+`includeUnselectable=true`, without which the 67 seeded cards that have no BIN
+prefixes are invisible to the only tool that can give them some.
 
 ## Where things live
 
@@ -46,6 +75,7 @@ src/
   store/     Redux Toolkit store, slices, selectors, persistence, typed hooks
   state/     wallet types and useWalletScore — debounced preview dispatches
   pages/     one per route; `#/wallet` is CardPickerPage
+  admin/     the desktop console behind `#/admin` — its own gate and chrome
   components/ router/ hooks/ styles/
 ```
 
