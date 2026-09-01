@@ -43,8 +43,13 @@
   word-break: break-all;
 }
 
+/* Smaller than the handle it precedes: the full link runs to ~38 characters,
+   which wraps to three lines at 23px in a 390px column, and the handle is the
+   part worth reading anyway. */
 .domain {
   color: var(--text-tertiary);
+  font-size: 15px;
+  letter-spacing: 0;
 }
 
 .field {

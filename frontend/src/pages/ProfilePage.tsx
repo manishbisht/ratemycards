@@ -5,6 +5,7 @@ import { Screen } from '../components/Screen'
 import type { GlowSpec } from '../components/Screen'
 import { TierPill } from '../components/TierPill'
 import type { Tier } from '../data/api'
+import { PUBLIC_DOMAIN, profileUrl } from '../data/brand'
 import type { Card } from '../data/cards'
 import { demoProfile } from '../data/demoProfile'
 import { summaryFor } from '../data/scoring'
@@ -28,11 +29,6 @@ type ProfileView = {
   summary: string
   cards: Card[]
   isOwn: boolean
-}
-
-function profileUrlFor(handle: string): string {
-  const { origin, pathname } = window.location
-  return `${origin}${pathname}#u/${handle}`
 }
 
 export function ProfilePage({ username }: { username: string }) {
@@ -62,7 +58,7 @@ export function ProfilePage({ username }: { username: string }) {
   if (!view) {
     return (
       <Screen glows={GLOWS} className={styles.missing}>
-        <div className={styles.eyebrow}>ratemycards.in</div>
+        <div className={styles.eyebrow}>{PUBLIC_DOMAIN}</div>
         <div className={styles.missingBody}>
           <h2 className={styles.missingTitle}>No wallet here yet</h2>
           <p className={styles.missingBlurb}>
@@ -78,7 +74,7 @@ export function ProfilePage({ username }: { username: string }) {
   }
 
   const tier = view.tier
-  const url = profileUrlFor(view.handle)
+  const url = profileUrl(view.handle)
   const shareText = `${view.handle} scored ${view.rating}/3000 on Rate My Cards.`
 
   const openShare = (target: string) => {
@@ -87,7 +83,7 @@ export function ProfilePage({ username }: { username: string }) {
 
   return (
     <Screen glows={GLOWS} className={styles.content}>
-      <div className={styles.eyebrow}>ratemycards.in</div>
+      <div className={styles.eyebrow}>{PUBLIC_DOMAIN}</div>
 
       <div className={styles.panel}>
         <div className={styles.handle} style={{ color: tier.color }}>

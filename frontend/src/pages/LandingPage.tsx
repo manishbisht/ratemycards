@@ -1,4 +1,5 @@
 import { Button } from '../components/Button'
+import { PUBLIC_DOMAIN } from '../data/brand'
 import { Screen } from '../components/Screen'
 import type { GlowSpec } from '../components/Screen'
 import { navigate } from '../router/hashRouter'
@@ -13,7 +14,7 @@ const GLOWS: GlowSpec[] = [
 export function LandingPage() {
   return (
     <Screen glows={GLOWS} className={styles.content}>
-      <div className={styles.wordmark}>ratemycards.in</div>
+      <div className={styles.wordmark}>{PUBLIC_DOMAIN}</div>
 
       <div className={styles.bottom}>
         <div className={styles.stackWrap} aria-hidden="true">

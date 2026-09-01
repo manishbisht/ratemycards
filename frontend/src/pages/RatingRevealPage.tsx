@@ -3,6 +3,7 @@ import { FannedDeck } from '../components/FannedDeck'
 import { Screen } from '../components/Screen'
 import type { GlowSpec } from '../components/Screen'
 import { TierPill } from '../components/TierPill'
+import { PUBLIC_DOMAIN } from '../data/brand'
 import { summaryFor } from '../data/scoring'
 import { navigate } from '../router/hashRouter'
 import { useWalletScore } from '../state/useWalletScore'
@@ -77,7 +78,10 @@ export function RatingRevealPage() {
             )
           }
         >
-          {claimed ? `View ${handle}.ratemycards.in` : 'Claim yourname.ratemycards.in'}
+          {/* The full path is too long for a button, so the domain earns its
+              place only in the call to action. Once the link is theirs it is
+              just noise. */}
+          {claimed ? 'View your profile' : `Claim your ${PUBLIC_DOMAIN} link`}
         </Button>
         <div className={styles.footnote}>{claimed ? 'Your profile is live' : 'Free, takes a second'}</div>
       </div>

@@ -3,7 +3,7 @@ import type { Card } from './cards'
 
 export type DemoProfile = {
   handle: string
-  /** The design's headline number, kept literal so `#u/arjun` matches it. */
+  /** The design's headline number, kept literal so `#/u/arjun` matches it. */
   rating: number
   /** Literal too: the ladder lives in the API, and a mockup has nothing to ask. */
   tier: Tier
@@ -13,7 +13,7 @@ export type DemoProfile = {
 }
 
 /**
- * The example wallet from the design, behind `#u/arjun`. Its cards are literal
+ * The example wallet from the design, behind `#/u/arjun`. Its cards are literal
  * rather than fetched: this is a mockup of somebody else's profile, and until
  * public profiles are a real endpoint there is nothing to fetch them from.
  */

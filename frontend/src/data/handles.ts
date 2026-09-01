@@ -4,7 +4,7 @@ export const TAKEN_HANDLES = ['arjun', 'admin', 'priya', 'cards', 'rohan']
 export const HANDLE_MIN = 3
 export const HANDLE_MAX = 20
 
-/** The shape a `#u/<handle>` route must match. */
+/** The shape a `#/u/<handle>` route must match. */
 export const HANDLE_PATTERN = new RegExp(`^[a-z0-9_]{${HANDLE_MIN},${HANDLE_MAX}}$`)
 
 export type HandleState = 'empty' | 'invalid' | 'short' | 'long' | 'taken' | 'available'
@@ -20,7 +20,7 @@ export type HandleCheck = {
 /**
  * Mirrors the design's availability check. The one addition is the `long`
  * case: the design only states the 20-character cap in helper text and never
- * enforces it, which would let someone claim a handle whose `#u/...` route
+ * enforces it, which would let someone claim a handle whose `#/u/...` route
  * then fails to parse.
  */
 export function checkHandle(raw: string): HandleCheck {

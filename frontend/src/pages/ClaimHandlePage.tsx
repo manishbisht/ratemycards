@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '../components/Button'
 import { Screen } from '../components/Screen'
 import type { GlowSpec } from '../components/Screen'
+import { PROFILE_PREFIX } from '../data/brand'
 import { checkHandle, HANDLE_MAX, HANDLE_MIN } from '../data/handles'
 import { navigate } from '../router/hashRouter'
 import { useAppDispatch, useAppSelector } from '../store/hooks'
@@ -48,9 +49,13 @@ export function ClaimHandlePage() {
 
       <div className={styles.panel}>
         <div className={styles.label}>Your URL</div>
+        {/* The domain leads and the handle follows, because that is the shape
+            of the real link -- there is no per-handle subdomain. It is set
+            smaller and grey so the handle, which is the part being chosen,
+            still carries the line. */}
         <div className={styles.url}>
+          <span className={styles.domain}>{PROFILE_PREFIX}</span>
           <span style={{ color }}>{check.normalized || 'yourname'}</span>
-          <span className={styles.domain}>.ratemycards.in</span>
         </div>
 
         <div className={styles.field} style={{ borderColor }}>

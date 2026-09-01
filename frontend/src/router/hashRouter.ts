@@ -63,10 +63,15 @@ const CARD_ID_PATTERN = /^card_[0-9a-f]{32}$/
 export function parseHash(rawHash: string): Route {
   const hash = rawHash.startsWith('#') ? rawHash.slice(1) : rawHash
 
-  // `#u/<username>` is matched before any leading slash is stripped, so the
-  // shareable profile link stays a character shorter than the `#/...` screens.
-  if (hash.startsWith('u/')) {
-    const username = hash.slice(2)
+  // `#/u/<handle>` is the only spelling. An earlier draft also took the
+  // slash-less `#u/<handle>` to save a character in a shared link; that made
+  // profiles the one route not shaped like every other, and it is gone --
+  // `#u/...` now falls through to notFound like any other unknown hash.
+  //
+  // Matched here, before the leading slash is stripped below, because after
+  // that this would be indistinguishable from a static route named `u`.
+  if (hash.startsWith('/u/')) {
+    const username = hash.slice(3)
     return HANDLE_PATTERN.test(username)
       ? { kind: 'profile', username }
       : { kind: 'notFound', hash }
@@ -107,7 +112,7 @@ export function hrefFor(route: Route): string {
     case 'claim':
       return `#/${route.kind}`
     case 'profile':
-      return `#u/${route.username}`
+      return `#/u/${route.username}`
     case 'adminBanks':
       return '#/admin/banks'
     case 'adminBank':

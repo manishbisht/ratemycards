@@ -1,4 +1,5 @@
 import { Button } from '../components/Button'
+import { PUBLIC_DOMAIN } from '../data/brand'
 import { Screen } from '../components/Screen'
 import type { GlowSpec } from '../components/Screen'
 import { navigate } from '../router/hashRouter'
@@ -12,7 +13,7 @@ const GLOWS: GlowSpec[] = [
 export function NotFoundPage() {
   return (
     <Screen glows={GLOWS} className={styles.content}>
-      <div className={styles.eyebrow}>ratemycards.in</div>
+      <div className={styles.eyebrow}>{PUBLIC_DOMAIN}</div>
       <div className={styles.body}>
         <h2 className={styles.title}>Nothing here</h2>
         <p className={styles.blurb}>That link does not point anywhere in Rate My Cards.</p>
