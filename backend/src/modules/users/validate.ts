@@ -1,4 +1,6 @@
 import type { ClerkIdentity } from './userTypes'
+import { isPlainObject } from '../../http/validators'
+import { HANDLE_MAX, HANDLE_MIN, HANDLE_PATTERN, isReservedHandle } from './userTypes'
 
 /**
  * Mirrors the CHECK constraints in 0007_create_users.sql. Change one, change
@@ -37,4 +39,49 @@ export function normalizeIdentity(identity: ClerkIdentity): ClerkIdentity | null
     name: clamp(identity.name, MAX_NAME),
     imageUrl: clamp(identity.imageUrl, MAX_IMAGE_URL),
   }
+}
+
+/** Declared per module, matching banks, cards, networks and scoring. */
+export type Validated<T> = { ok: true; value: T } | { ok: false; errors: string[] }
+
+/**
+ * The one client-supplied value in this module. Everything else arrives from
+ * Clerk already verified, which is why normalizeIdentity above clamps rather
+ * than rejects; this one is typed by a person and gets a real 400.
+ *
+ * Normalises before validating, so `  ArjunK  ` is accepted as `arjunk` rather
+ * than rejected for characters the user cannot see.
+ */
+export function validateHandleInput(body: unknown): Validated<string> {
+  if (!isPlainObject(body)) {
+    return { ok: false, errors: ['The request body must be a JSON object.'] }
+  }
+
+  if (typeof body.handle !== 'string') {
+    return { ok: false, errors: ['handle is required and must be a string.'] }
+  }
+
+  const handle = body.handle.trim().toLowerCase()
+  const errors: string[] = []
+
+  if (handle.length < HANDLE_MIN || handle.length > HANDLE_MAX) {
+    errors.push(`handle must be ${HANDLE_MIN} to ${HANDLE_MAX} characters.`)
+  }
+  if (!/^[a-z0-9_]*$/.test(handle)) {
+    errors.push('handle may contain only letters, numbers and underscores.')
+  }
+  // Checked after normalisation, so 'ADMIN' is caught too.
+  if (isReservedHandle(handle)) {
+    errors.push(`'${handle}' is reserved.`)
+  }
+
+  if (errors.length > 0) return { ok: false, errors }
+
+  // Belt and braces: the two rules above should already imply the pattern, and
+  // if they ever drift this is what stops a bad value reaching the CHECK.
+  if (!HANDLE_PATTERN.test(handle)) {
+    return { ok: false, errors: ['handle is not valid.'] }
+  }
+
+  return { ok: true, value: handle }
 }
