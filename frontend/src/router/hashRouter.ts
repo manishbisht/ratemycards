@@ -133,6 +133,41 @@ export function navigate(route: Route): void {
 }
 
 /**
+ * Like `navigate`, but without leaving a history entry behind.
+ *
+ * For sending someone somewhere they did not ask to go -- see
+ * useLandingDestination, which lands a returning user on their own screen
+ * instead of the pitch. Pushing there would put the screen they were skipping
+ * one Back press away, and Back would land them on a screen that was only ever
+ * going to redirect them again.
+ *
+ * `replaceState` updates `location.hash` but fires no `hashchange`, and
+ * `useRoute` is a `useSyncExternalStore` over exactly that event -- so the
+ * event is raised by hand. The listener re-reads `location.hash`, which is
+ * already the new one by then.
+ */
+export function redirect(route: Route): void {
+  window.history.replaceState(null, '', hrefFor(route))
+  window.dispatchEvent(new HashChangeEvent('hashchange'))
+}
+
+/**
+ * The route this page load began on -- `null` until `normalizeInitialHash` has
+ * run, which is deliberately the only writer: by then `normalizeSsoReturn` has
+ * had its say (a finished Google trip arrives on the bare root and is rewritten
+ * to `#/verify`), and nothing in the app has navigated yet.
+ *
+ * Read by useLandingDestination to tell an actual arrival at a screen from a
+ * later walk back to it. Staying `null` when nobody normalizes just means no
+ * arrival is claimed, which is the safe answer.
+ */
+let initialRoute: Route | null = null
+
+export function getInitialRoute(): Route | null {
+  return initialRoute
+}
+
+/**
  * Sends a bare URL to `#/` before the first render. `replaceState` is used
  * rather than assigning `location.hash` so the landing screen does not leave a
  * second history entry behind the user's first Back press.
@@ -142,6 +177,8 @@ export function normalizeInitialHash(): void {
   if (hash === '' || hash === '#') {
     window.history.replaceState(null, '', '#/')
   }
+
+  initialRoute = parseHash(window.location.hash)
 }
 
 export function subscribeToHash(onChange: () => void): () => void {
