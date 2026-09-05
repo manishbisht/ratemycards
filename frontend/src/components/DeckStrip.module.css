@@ -2,11 +2,14 @@
   /* Single-sourced pile geometry. `--tile-w` over `--tile-h` is the 1.6 the
      card art is drawn at, so the art scales into a tile without being cropped.
      `--tile-step` is how far to the right each card sits behind the one before
-     it, and so how much of its edge shows; four tiles come to 226px, well
-     inside the picker's 350px content box. */
+     it, and so how much of its edge shows. It cannot go below 24px: that is the
+     dot's 18px plus its 6px offset, and anything tighter clips the status off
+     every buried card. At 26px a full pile of MAX_TILES plus the overflow badge
+     comes to 320px, inside the profile's 346px box -- the narrower of the two
+     places this renders. */
   --tile-w: 136px;
   --tile-h: 85px;
-  --tile-step: 30px;
+  --tile-step: 26px;
 
   display: flex;
   align-items: flex-end;
@@ -67,4 +70,19 @@
   position: absolute;
   top: 7px;
   right: 6px;
+}
+
+/* What did not fit. Counted rather than dropped, so a pile of eight never
+   quietly stands in for a wallet of eleven. Sits after the last tile in normal
+   flow -- the negative margins only run between tiles -- and above them, since
+   every tile carries an explicit z-index. */
+.more {
+  position: relative;
+  z-index: 100;
+  align-self: center;
+  margin-left: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
 }

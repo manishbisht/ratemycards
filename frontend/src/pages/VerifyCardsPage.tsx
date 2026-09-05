@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { Button } from '../components/Button'
 import { CardArt } from '../components/CardArt'
+import { ConfirmRemove } from '../components/ConfirmRemove'
 import { Screen } from '../components/Screen'
 import type { GlowSpec } from '../components/Screen'
 import { confirmVerification, startVerification } from '../data/api'
@@ -33,10 +34,20 @@ export function VerifyCardsPage() {
    * card on "Waiting…" with no way to retry.
    */
   const [busy, setBusy] = useState<Record<CardId, boolean>>({})
+  /**
+   * The card whose removal is being confirmed, if any.
+   *
+   * One at a time: opening a second question closes the first, so there is
+   * never more than one destructive choice on screen to mis-tap.
+   */
+  const [confirming, setConfirming] = useState<CardId | null>(null)
   const dispatch = useAppDispatch()
   const wallet = useAppSelector(selectWallet)
   const chosenCards = useAppSelector(selectChosenCards)
   const verifiedCards = useAppSelector(selectVerifiedCards)
+  // Held cards with no BIN prefixes on file: nothing here can verify them, so
+  // they must not hold the summary short of "all verified".
+  const blockedCount = chosenCards.filter((card) => !card.selectable).length
   const statusOf = (id: CardId) => wallet.vstatus[id] ?? 'unverified'
   const verifiedDateOf = (id: CardId) => wallet.verifiedAt[id]
 
@@ -151,6 +162,13 @@ export function VerifyCardsPage() {
             // its label, but must not lock the button.
             const isPending = busy[card.id] === true
             const isFailed = status === 'failed'
+            /**
+             * No BIN prefixes on file, so `POST /v1/verifications` would refuse
+             * this outright. The catalog already carries `selectable`, so the
+             * dead end is knowable before the tap rather than after it -- and
+             * the row can offer the one thing that actually helps instead.
+             */
+            const unverifiable = !card.selectable
 
             const rowBorder = isVerified
               ? 'rgba(52,211,153,0.28)'
@@ -164,8 +182,11 @@ export function VerifyCardsPage() {
                   <CardArt issuer={card.issuer} name={card.name} />
                   <div className={styles.rowText}>
                     <div className={styles.rowName}>{card.name}</div>
-                    <div className={styles.rowStatus} style={{ color: STATUS_COLOR[status] }}>
-                      {STATUS_LABEL[status]}
+                    <div
+                      className={styles.rowStatus}
+                      style={{ color: unverifiable ? 'var(--text-muted)' : STATUS_COLOR[status] }}
+                    >
+                      {unverifiable ? 'Can’t verify' : STATUS_LABEL[status]}
                     </div>
                   </div>
                   <button
@@ -175,22 +196,27 @@ export function VerifyCardsPage() {
                     style={{
                       background: isVerified
                         ? 'rgba(52,211,153,0.12)'
-                        : isPending
+                        : isPending || unverifiable
                           ? 'transparent'
                           : '#fff',
                       color: isVerified
                         ? 'var(--status-verified)'
-                        : isPending
+                        : isPending || unverifiable
                           ? 'rgba(255,255,255,0.6)'
                           : 'var(--bg)',
                       borderColor: isVerified
                         ? 'rgba(52,211,153,0.35)'
-                        : isPending
+                        : isPending || unverifiable
                           ? 'rgba(255,255,255,0.16)'
                           : 'transparent',
                     }}
                     onClick={() => {
+                      if (unverifiable) {
+                        navigate({ kind: 'requests', cardId: card.id })
+                        return
+                      }
                       if (isVerified) {
+                        setConfirming(null)
                         setOpenNote((current) => (current === card.id ? null : card.id))
                         return
                       }
@@ -198,19 +224,43 @@ export function VerifyCardsPage() {
                       void verify(card.id)
                     }}
                   >
-                    {isVerified
-                      ? 'Verified'
-                      : isPending
-                        ? 'Waiting…'
-                        : isFailed || status === 'pending'
-                          ? 'Retry'
-                          : 'Verify'}
+                    {unverifiable
+                      ? 'Help us'
+                      : isVerified
+                        ? 'Verified'
+                        : isPending
+                          ? 'Waiting…'
+                          : isFailed || status === 'pending'
+                            ? 'Retry'
+                            : 'Verify'}
                   </button>
                 </div>
 
-                {openNote === card.id && status !== 'unverified' ? (
+                {confirming === card.id ? (
+                  <ConfirmRemove
+                    name={card.name}
+                    className={styles.confirm}
+                    onConfirm={() => {
+                      setConfirming(null)
+                      setOpenNote(null)
+                      // The same toggle the picker uses, so removal takes the
+                      // one path that writes through to the server.
+                      dispatch(walletActions.toggleCard(card.id))
+                    }}
+                    onCancel={() => setConfirming(null)}
+                  />
+                ) : openNote === card.id && status !== 'unverified' ? (
                   <div className={styles.note}>
                     {outcome[card.id] || verifyNote(status, verifiedDateOf(card.id))}
+                    {isVerified ? (
+                      <button
+                        type="button"
+                        className={styles.remove}
+                        onClick={() => setConfirming(card.id)}
+                      >
+                        Remove from wallet
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -221,7 +271,9 @@ export function VerifyCardsPage() {
 
       <div className={styles.footer}>
         <div className={styles.summary}>
-          <div className={styles.summaryLine}>{verifyLine(chosenCount, verifiedCount)}</div>
+          <div className={styles.summaryLine}>
+            {verifyLine(chosenCount, verifiedCount, blockedCount)}
+          </div>
           <div
             className={styles.summaryScore}
             style={{ color: verifiedCount ? tier.color : 'rgba(255,255,255,0.35)' }}

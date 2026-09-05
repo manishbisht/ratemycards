@@ -4,17 +4,37 @@
  * What is left is the copy derived from a wallet's shape.
  */
 
-/** "1 of 2 verified · 1 not counted" */
-export function verifyLine(chosenCount: number, verifiedCount: number): string {
+/**
+ * "1 of 3 verified · 1 not counted · 1 can’t be verified yet"
+ *
+ * `blockedCount` is how many of the chosen cards have no BIN prefixes on file.
+ * Nothing the person does can verify those, so they are called out separately
+ * rather than folded into "not counted", which reads like something they still
+ * have to go and do.
+ */
+export function verifyLine(chosenCount: number, verifiedCount: number, blockedCount = 0): string {
   if (chosenCount === 0) return 'Add cards to begin'
-  const unverified = chosenCount - verifiedCount
-  const base = `${verifiedCount} of ${chosenCount} verified`
-  return unverified === 0 ? base : `${base} · ${unverified} not counted`
+
+  const parts = [`${verifiedCount} of ${chosenCount} verified`]
+  const pending = chosenCount - verifiedCount - blockedCount
+  if (pending > 0) parts.push(`${pending} not counted`)
+  if (blockedCount > 0) parts.push(`${blockedCount} can’t be verified yet`)
+
+  return parts.join(' · ')
 }
 
-/** The picker's button flips to "Reveal" only once nothing is left to verify. */
-export function primaryCta(chosenCount: number, verifiedCount: number): string {
-  return verifiedCount > 0 && verifiedCount === chosenCount ? 'Reveal' : 'Verify cards'
+/**
+ * The picker's button flips to "Reveal" only once nothing is left to verify.
+ *
+ * A card with no BIN prefixes on file cannot be verified BY ANYBODY, so it is
+ * excluded from the target rather than counted against it. Without that, a
+ * wallet holding one would sit on "Verify cards" for ever with nothing the
+ * person could do about it -- which is exactly what happens now that the picker
+ * offers those cards instead of hiding them.
+ */
+export function primaryCta(chosenCount: number, verifiedCount: number, blockedCount = 0): string {
+  const verifiable = chosenCount - blockedCount
+  return verifiedCount > 0 && verifiedCount === verifiable ? 'Reveal' : 'Verify cards'
 }
 
 /**
@@ -42,4 +62,35 @@ export function summaryFor(score: number, cardCount: number): string {
   if (score >= 1400) return 'A solid wallet. A premium card would move you up a tier.'
   if (score >= 1000) return 'A practical start. Adding a card or two climbs fastest.'
   return 'An entry-level wallet. Plenty of room to climb.'
+}
+
+/**
+ * The line that goes out with a shared profile.
+ *
+ * FIRST PERSON ON YOUR OWN PROFILE, third on anybody else's. The same screen is
+ * both, and it used to name the handle either way -- so sharing your own read
+ * as "manishbisht scored 2712", written about yourself in the third person.
+ *
+ * The tier and the verified count do the work the bare number cannot. 2712 is
+ * meaningless without knowing it is out of 3000 and what that makes you, and
+ * "verified" is the whole difference between this and a list somebody typed.
+ */
+export function shareLine(profile: {
+  isOwn: boolean
+  handle: string
+  rating: number
+  maxScore: number
+  tierName: string
+  verifiedCount: number
+}): string {
+  const who = profile.isOwn ? 'I' : profile.handle
+  const boast = [profile.tierName]
+  // Omitted at zero rather than boasting about none: a wallet nobody has proved
+  // yet is exactly what this line should not draw attention to.
+  if (profile.verifiedCount > 0) {
+    boast.push(`${profile.verifiedCount} verified ${profile.verifiedCount === 1 ? 'card' : 'cards'}`)
+  }
+  const challenge = profile.isOwn ? 'Think your wallet beats mine?' : 'Think yours beats it?'
+
+  return `${who} scored ${profile.rating}/${profile.maxScore} on Rate My Cards — ${boast.join(', ')}. ${challenge}`
 }

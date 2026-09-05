@@ -151,3 +151,92 @@
 .cardRating {
   font-variant-numeric: tabular-nums;
 }
+
+/*
+ * Sits under the row it belongs to, closer to it than the 8px between rows --
+ * the question and its card have to read as one thing in a scrolling list.
+ */
+.confirm {
+  margin-top: 4px;
+}
+
+/* The ask under a held card that has no BIN prefixes on file. Sits in the same
+   slot as the remove confirmation, and is deliberately quiet: it is an offer,
+   not a problem with anything the person did. */
+.askForBins {
+  margin-top: 4px;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px dashed var(--border-field);
+  background: rgba(10, 10, 15, 0.5);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  color: var(--accent);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Sits between the search and the list. One chip today; the row is here so a
+   second filter does not need a layout. */
+.filters {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.chip,
+.chipOn,
+.chipOnPlain {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.chip {
+  border: 1px solid var(--border-field);
+  background: transparent;
+  color: var(--text-tertiary);
+}
+
+/* The verified green, the colour this app already uses for a proved card. */
+.chipOn {
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  background: rgba(52, 211, 153, 0.14);
+  color: var(--status-verified);
+}
+
+/* The waiting-to-be-verified chip is plain white. Unverified is not a warning
+   -- it is the ordinary state of a card somebody just added -- so it gets the
+   neutral selected treatment rather than a status colour. */
+.chipOnPlain {
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+}
+
+.chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.chipCount {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+@media (hover: hover) {
+  .chip:not(:disabled):hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+}

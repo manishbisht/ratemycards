@@ -58,6 +58,7 @@ chrome — the `PhoneFrame` column, `AuthBar`, `Screen` — comes along.
 | `#/admin/cards/<cardId>` | a card's fields, its networks + BINs, its scores |
 | `#/admin/networks` | payment networks and their BIN prefix rules |
 | `#/admin/criteria` | the scoring rubric |
+| `#/admin/requests` | cards and BIN prefixes people have asked for |
 
 `AdminGate` wants **≥ 900px** and refuses below it, because a master-detail
 with tables in it has a floor the app does not. Access comes from
@@ -72,12 +73,22 @@ forms always post the complete set; and every admin card list passes
 `includeUnselectable=true`, without which the 67 seeded cards that have no BIN
 prefixes are invisible to the only tool that can give them some.
 
+The requests queue leans on the first of those hard enough to be worth its own
+warning. Approving a request writes **nothing** to the catalog — the screen
+creates the bank and the card through the ordinary endpoints first, and approve
+only records that it happened. Adding a BIN prefix goes through `mergeCardBins`
+in `data/adminApi.ts`, which reads the card's whole network set and sends it all
+back; calling `replaceCardNetworks` with just the new prefix would delete every
+other prefix on the card, return 200, and break verification for everyone
+already holding it.
+
 ## Where things live
 
 ```
 src/
   data/      cards.ts (the Card type)  api.ts (the API client)
              scoring.ts (derived copy)  handles.ts  verification.ts
+             cardRequests.ts (request types and the copy for a settled one)
              — no tier ladder: the API returns the tier with the score
   store/     Redux Toolkit store, slices, selectors, persistence, typed hooks
   state/     wallet types and useWalletScore — debounced preview dispatches
@@ -104,6 +115,14 @@ anyone else's profile is fetched from `GET /v1/profiles/:handle`.
 - The Redux catalog slice is loaded when the app starts; search remains local
   to the picker and re-queries the API, debounced, so the list always reflects
   the live catalog.
+- **The picker shows cards it cannot verify.** Two thirds of the catalog has no
+  BIN prefixes on file. Those rows used to be filtered out; they now render
+  greyed and marked "Can't verify yet", and a held one offers to ask for its
+  prefixes at `#/requests`. Hiding them kept the backlog away from the only
+  people who can close it. Because a wallet can now hold a card nothing can ever
+  verify, `primaryCta` and `verifyLine` in `data/scoring.ts` take a
+  `blockedCount` and exclude those from "everything verified" — without it the
+  Reveal button would never unlock.
 - **The picker never shows or fetches a rating.** The score is masked until the
   user presses Reveal; `useWalletScore` is called by the screens that display a
   score (reveal, verify, profile), not by the provider, so the picker issues no

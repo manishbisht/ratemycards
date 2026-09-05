@@ -138,3 +138,32 @@
   font-size: 12.5px;
   color: var(--text-quaternary);
 }
+
+/*
+ * The way out of a verified card, kept inside the note rather than in the row.
+ *
+ * The row is one decision wide -- art, status, and the action -- and a phone
+ * frame has no space for a second button beside it. Tapping 'Verified' already
+ * opens the note, so removal sits one deliberate step past the tap that says
+ * "tell me about this card", which is where a destructive action belongs.
+ */
+.remove {
+  display: block;
+  margin-top: 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--status-failed);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Takes the note's place, so it takes the note's spacing too. */
+.confirm {
+  margin-top: 12px;
+}
