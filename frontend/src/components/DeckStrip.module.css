@@ -1,26 +1,35 @@
 .strip {
+  /* Single-sourced pile geometry. `--tile-w` over `--tile-h` is the 1.6 the
+     card art is drawn at, so the art scales into a tile without being cropped.
+     `--tile-step` is how far to the right each card sits behind the one before
+     it, and so how much of its edge shows; four tiles come to 226px, well
+     inside the picker's 350px content box. */
+  --tile-w: 136px;
+  --tile-h: 85px;
+  --tile-step: 30px;
+
   display: flex;
   align-items: flex-end;
-  height: 118px;
+  height: 100px;
   padding-left: 10px;
 }
 
 .tile {
-  width: 104px;
-  height: 100px;
-  border-radius: 14px;
-  padding: 12px;
+  width: var(--tile-w);
+  height: var(--tile-h);
+  /* The 22px corner the art draws in its own 320x200 box, at tile scale. */
+  border-radius: 9px;
   box-sizing: border-box;
-  /* Opaque base under the glass gradient: tiles overlap, and a translucent
-     tile would let the label beneath it bleed through. */
+  /* Load-bearing, and opaque on purpose. An unverified card dims by fading its
+     artwork, so this is what the artwork fades *into* -- without it the cards
+     stacked behind would show through. It also gives a tile a card-shaped
+     surface while its art is still loading. */
   background-color: var(--surface);
-  background-image: linear-gradient(150deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.05));
-  box-shadow: var(--shadow-tile);
+  /* Cast to the right, not the left `--shadow-tile` assumes: the cards behind
+     this one are the ones off to the right, and they are what needs the
+     shadow to separate them from it. */
+  box-shadow: 10px 12px 24px rgba(0, 0, 0, 0.5);
   border: 1px solid;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  align-items: flex-end;
   flex: none;
   overflow: hidden;
   position: relative;
@@ -31,14 +40,15 @@
   inset: 0;
   width: 100%;
   height: 100%;
+  /* The tile is the art's own aspect ratio, so `cover` scales it to fit and
+     crops nothing. */
   object-fit: cover;
-  opacity: 0.82;
 }
 
-/* Tiles overlap into a deck — but only onto each other, so the first one is
-   never pushed off the left edge. */
+/* Each card steps `--tile-step` to the right of the one before it. The tile
+   itself is z-ordered behind that one, so the step is what shows of it. */
 .tile + .tile {
-  margin-left: -56px;
+  margin-left: calc(var(--tile-step) - var(--tile-w));
 }
 
 .dot {
@@ -51,22 +61,10 @@
   font-size: 10px;
   font-weight: 700;
   border: 1px solid;
-  position: relative;
-  z-index: 1;
-}
-
-.label {
-  /* Stays pinned to the bottom whether or not the status dot renders. */
-  margin-top: auto;
-  width: 100%;
-  font-size: 11px;
-  line-height: 1.25;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.9);
-  white-space: pre-line;
-  /* Card names run long ("Diners Club Black Metal"); clip rather than spill. */
-  overflow: hidden;
-  position: relative;
-  z-index: 1;
-  text-shadow: 0 1px 7px rgba(0, 0, 0, 0.8);
+  /* Pinned to the right-hand edge, which is the part of a buried card that
+     stays exposed -- so every card's status shows, not just the top one's.
+     Fits inside `--tile-step` with room either side. */
+  position: absolute;
+  top: 7px;
+  right: 6px;
 }
