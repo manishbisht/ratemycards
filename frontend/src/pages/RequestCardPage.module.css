@@ -1,0 +1,296 @@
+/* Scrolls as one column rather than a fixed list over a fixed footer: this
+   screen is a form followed by a history, and neither has a natural height. */
+.content {
+  padding: max(58px, calc(var(--inset-top) + 20px)) 20px calc(30px + var(--inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 4px 20px;
+}
+
+.back {
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.heading {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: var(--radius-field);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--hairline);
+}
+
+.tab,
+.tabOn {
+  flex: 1;
+  padding: 9px 8px;
+  border: none;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.tab {
+  background: transparent;
+  color: var(--text-tertiary);
+}
+
+.tabOn {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+.form {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.label {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-label);
+}
+
+.input,
+.textarea {
+  width: 100%;
+  padding: 13px 14px;
+  border-radius: var(--radius-field);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--border-field);
+  outline: none;
+  color: var(--text);
+  font-family: inherit;
+  /* 16px so iOS Safari does not zoom the viewport on focus. */
+  font-size: 16px;
+}
+
+.textarea {
+  resize: none;
+  line-height: 1.45;
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.input:focus,
+.textarea:focus {
+  border-color: rgba(251, 146, 60, 0.5);
+}
+
+/* The BIN warning. Deliberately louder than a placeholder and quieter than an
+   error: it is a caution about what NOT to type, and it is on screen before
+   anything has gone wrong. */
+.caution {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.addBin {
+  align-self: flex-start;
+  padding: 6px 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--accent);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* One search result in the card picker above. */
+.match {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 11px 14px;
+  border-radius: var(--radius-row);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.matchName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.matchIssuer {
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+}
+
+.switchHint {
+  padding: 12px 14px;
+  border-radius: var(--radius-row);
+  border: 1px dashed var(--border-field);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: var(--accent);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pickedRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-row);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+}
+
+.pickedName {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pickedIssuer {
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+}
+
+.change {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--accent);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Every fault the API reported, not just the first: its validators are
+   accumulator-style and answer with all of them at once. */
+.faults {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--status-failed);
+}
+
+.sent {
+  padding: 11px 14px;
+  border-radius: var(--radius-row);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  background: rgba(52, 211, 153, 0.1);
+  font-size: 13px;
+  color: var(--status-verified);
+}
+
+.listHeading {
+  margin: 30px 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-label);
+}
+
+.request {
+  margin-bottom: 8px;
+  padding: 13px 14px;
+  border-radius: var(--radius-row);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+}
+
+.requestTop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.requestName {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.requestStatus {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.requestNote {
+  margin: 5px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.withdraw {
+  margin-top: 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.empty {
+  padding: 18px 16px;
+  border-radius: var(--radius-row);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+  text-wrap: pretty;
+}
+
+.empty > div {
+  margin-top: 14px;
+}

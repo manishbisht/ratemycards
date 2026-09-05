@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { adminAuth } from '../../http/adminAuth'
 import { ApiError, readJsonBody } from '../../http/errors'
-import { parseBool, parseLimit, parseOffset } from '../../http/params'
+import { MAX_LIMIT, parseBool, parseLimit, parseOffset } from '../../http/params'
 import type { AppEnv } from '../../env'
 import {
   createNetwork,
@@ -16,14 +16,18 @@ import { validateNetworkInput, validateNetworkPatch } from './validate'
  * Admin-only throughout, reads included -- which departs from /v1/banks and
  * /v1/cards, where GET is public.
  *
- * The reason is that this resource has no public consumer: the frontend calls
- * only /v1/cards, /v1/wallet* and /v1/verifications*, takes the issuer name
- * from the card's own `issuer` field, and shows no network anywhere. The admin
- * panel is the sole reader. Publishing it later, if a network badge on a card
- * ever wants it, is a one-line change; un-publishing it once a client depends
- * on it is not.
+ * The reason was that this resource had no public consumer: the frontend called
+ * only /v1/cards, /v1/wallet* and /v1/verifications*, took the issuer name from
+ * the card's own `issuer` field, and showed no network anywhere.
  *
- * Five handlers, five adminAuth.
+ * `GET /options` is the one exception, and the change this docstring predicted.
+ * The card-request form has to ask which network somebody's card runs on, and
+ * the alternative -- a hardcoded list of eight codes in the client -- would put
+ * a second copy of server truth in the bundle. It publishes the code and the
+ * display name and NOTHING ELSE: not the id, which never leaves the server, and
+ * not binRules, which is the list a verification matches against.
+ *
+ * Six handlers, five adminAuth.
  */
 export const networkRoutes = new Hono<AppEnv>()
 
@@ -36,6 +40,25 @@ networkRoutes.get('/', adminAuth, async (c) => {
     offset: parseOffset(c.req.query('offset')),
   })
   return c.json({ data: networks, total })
+})
+
+/**
+ * The networks a person can say their card runs on. Public, and deliberately
+ * the narrowest possible projection -- see the note above.
+ *
+ * Declared before `/:id` so the literal path is never read as an id.
+ */
+networkRoutes.get('/options', async (c) => {
+  const { networks } = await listNetworks(c.env.DB, {
+    includeInactive: false,
+    limit: MAX_LIMIT,
+    offset: 0,
+  })
+
+  return c.json({
+    data: networks.map((network) => ({ code: network.code, name: network.name })),
+    total: networks.length,
+  })
 })
 
 networkRoutes.get('/:id', adminAuth, async (c) => {

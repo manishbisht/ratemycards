@@ -14,6 +14,7 @@ import { LoginPage } from './pages/LoginPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { RatingRevealPage } from './pages/RatingRevealPage'
+import { RequestCardPage } from './pages/RequestCardPage'
 import { SsoCallbackPage } from './pages/SsoCallbackPage'
 import { VerifyCardsPage } from './pages/VerifyCardsPage'
 import type { AdminRoute, Route } from './router/hashRouter'
@@ -45,6 +46,8 @@ function renderRoute(route: Exclude<Route, AdminRoute>): React.ReactNode {
       return <ClaimHandlePage />
     case 'profile':
       return <ProfilePage username={route.username} />
+    case 'requests':
+      return <RequestCardPage cardId={route.cardId} />
     case 'notFound':
       return <NotFoundPage />
   }

@@ -99,6 +99,13 @@ export type AdminCardInput = {
   type: CardType
   joiningFee: number
   annualFee: number
+  /**
+   * The networks the card runs on and the prefixes under each, written in the
+   * same call that creates it. `POST /v1/cards` has always accepted this; the
+   * panel just never asked for it, so a new card needed a create and then a
+   * PATCH. Approving a card request is the caller that wanted one write.
+   */
+  networks?: { code: string; bins: string[] }[]
 }
 
 /**
@@ -173,6 +180,36 @@ export function replaceCardNetworks(
     method: 'PATCH',
     body: JSON.stringify({ networks }),
   })
+}
+
+/**
+ * Adds prefixes to a card without destroying the ones already there.
+ *
+ * THE ONLY SAFE WAY TO ADD A BIN. `replaceCardNetworks` is a full replace whose
+ * first act server-side is `DELETE FROM card_bins WHERE card_id = ?` -- all of
+ * them, before it looks at what you sent. Passing it one network with one
+ * prefix therefore wipes every other network and every other prefix on the
+ * card, returns 200, and breaks `POST /v1/verifications` for everyone already
+ * holding it, because that route refuses a card with no networks or no
+ * prefixes. Read the whole set, merge into it, send it all back.
+ *
+ * Never call `replaceCardNetworks` directly to add something.
+ */
+export async function mergeCardBins(
+  cardId: string,
+  code: string,
+  bins: string[],
+): Promise<AdminCard> {
+  const current = await listCardNetworks(cardId)
+
+  const merged = current.data.map((entry) =>
+    entry.network === code
+      ? { code: entry.network, bins: [...new Set([...entry.bins, ...bins])].sort() }
+      : { code: entry.network, bins: entry.bins },
+  )
+  if (!merged.some((entry) => entry.code === code)) merged.push({ code, bins: [...bins].sort() })
+
+  return replaceCardNetworks(cardId, merged)
 }
 
 /* ------------------------------------------------------- rubric and scores */
@@ -275,4 +312,68 @@ export function updateNetwork(
 
 export function deactivateNetwork(networkId: string): Promise<void> {
   return request<void>(`/v1/networks/${networkId}`, { method: 'DELETE' })
+}
+
+/* ---------------------------------------------------------- card requests */
+
+export type RequestKind = 'card' | 'bin'
+
+export type RequestStatus = 'pending' | 'approved' | 'rejected'
+
+export type AdminCardRequest = {
+  id: string
+  kind: RequestKind
+  status: RequestStatus
+  card: { id: string; name: string; issuer: string; selectable: boolean } | null
+  proposal: { bankId: string | null; issuer: string; name: string; type: CardType | null } | null
+  network: string
+  bins: string[]
+  note: string | null
+  reviewNote: string | null
+  createdAt: string
+  reviewedAt: string | null
+  requester: { id: string; handle: string | null }
+  /** Null when the review came in over ADMIN_TOKEN, which identifies nobody. */
+  reviewedBy: string | null
+}
+
+/**
+ * The queue. Defaults server-side to pending, which is both the useful view and
+ * what keeps it inside ADMIN_PAGE_SIZE -- this is the first admin list that can
+ * plausibly outgrow one page.
+ */
+export function listCardRequests(
+  params: { status?: RequestStatus } = {},
+  signal?: AbortSignal,
+): Promise<Page<AdminCardRequest>> {
+  const search = new URLSearchParams({ limit: String(ADMIN_PAGE_SIZE) })
+  if (params.status) search.set('status', params.status)
+
+  return request<Page<AdminCardRequest>>(`/v1/card-requests/review?${search}`, { signal })
+}
+
+/**
+ * Records that a request has been honoured. Writes nothing to the catalog --
+ * the card and its prefixes have to exist already, through the endpoints above.
+ *
+ * `selectable` in the answer is reported, not enforced: a card with no prefixes
+ * is approved just the same, and the screen says so rather than the API
+ * refusing.
+ */
+export function approveCardRequest(
+  id: string,
+  body: { cardId?: string; note?: string } = {},
+): Promise<{ request: AdminCardRequest; selectable: boolean }> {
+  return request(`/v1/card-requests/${id}/approve`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+/** The note is required: "Declined" with no reason is the worst possible answer. */
+export function rejectCardRequest(id: string, note: string): Promise<AdminCardRequest> {
+  return request<AdminCardRequest>(`/v1/card-requests/${id}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ note }),
+  })
 }

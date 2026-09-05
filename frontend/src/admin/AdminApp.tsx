@@ -5,6 +5,7 @@ import { AdminCardPage } from './AdminCardPage'
 import { AdminCriteriaPage } from './AdminCriteriaPage'
 import { AdminGate } from './AdminGate'
 import { AdminNetworksPage } from './AdminNetworksPage'
+import { AdminRequestsPage } from './AdminRequestsPage'
 import { useAdminSession } from './useAdminSession'
 import styles from './AdminApp.module.css'
 
@@ -81,6 +82,8 @@ function AdminScreen({ route }: { route: AdminRoute }) {
       return <AdminNetworksPage route={route} />
     case 'adminCriteria':
       return <AdminCriteriaPage route={route} />
+    case 'adminRequests':
+      return <AdminRequestsPage route={route} />
   }
 }
 

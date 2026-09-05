@@ -18,6 +18,7 @@ const SECTIONS = [
   { label: 'Banks', route: { kind: 'adminBanks' } as const },
   { label: 'Networks', route: { kind: 'adminNetworks' } as const },
   { label: 'Rubric', route: { kind: 'adminCriteria' } as const },
+  { label: 'Requests', route: { kind: 'adminRequests' } as const },
 ]
 
 /** Which nav item to light up. Bank and card screens both live under Banks. */
@@ -27,6 +28,8 @@ function sectionFor(route: AdminRoute): string {
       return 'Networks'
     case 'adminCriteria':
       return 'Rubric'
+    case 'adminRequests':
+      return 'Requests'
     default:
       return 'Banks'
   }

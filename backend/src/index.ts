@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import type { AppEnv } from './env'
 import { notFound, onError } from './http/errors'
 import { bankRoutes } from './modules/banks/routes'
+import { cardRequestRoutes } from './modules/cardRequests/routes'
 import { cardRoutes } from './modules/cards/routes'
 import { networkRoutes } from './modules/networks/routes'
 import { profileRoutes } from './modules/profiles/routes'
@@ -37,6 +38,7 @@ app.get('/health', (c) => c.json({ ok: true }))
 
 app.route('/v1/banks', bankRoutes)
 app.route('/v1/cards', cardRoutes)
+app.route('/v1/card-requests', cardRequestRoutes)
 app.route('/v1/networks', networkRoutes)
 app.route('/v1/criteria', criterionRoutes)
 app.route('/v1/users', userRoutes)

@@ -8,11 +8,14 @@ export type Route =
   | { kind: 'verify' }
   | { kind: 'claim' }
   | { kind: 'profile'; username: string }
+  /** The form for asking after a missing card, and your own past asks. */
+  | { kind: 'requests'; cardId: string | null }
   | { kind: 'adminBanks' }
   | { kind: 'adminBank'; bankId: string }
   | { kind: 'adminCard'; cardId: string }
   | { kind: 'adminNetworks' }
   | { kind: 'adminCriteria' }
+  | { kind: 'adminRequests' }
   | { kind: 'notFound'; hash: string }
 
 export type RouteKind = Route['kind']
@@ -23,7 +26,15 @@ export type RouteKind = Route['kind']
  */
 export type AdminRoute = Extract<
   Route,
-  { kind: 'adminBanks' | 'adminBank' | 'adminCard' | 'adminNetworks' | 'adminCriteria' }
+  {
+    kind:
+      | 'adminBanks'
+      | 'adminBank'
+      | 'adminCard'
+      | 'adminNetworks'
+      | 'adminCriteria'
+      | 'adminRequests'
+  }
 >
 
 const ADMIN_KINDS: ReadonlySet<RouteKind> = new Set<RouteKind>([
@@ -32,6 +43,7 @@ const ADMIN_KINDS: ReadonlySet<RouteKind> = new Set<RouteKind>([
   'adminCard',
   'adminNetworks',
   'adminCriteria',
+  'adminRequests',
 ])
 
 export function isAdminRoute(route: Route): route is AdminRoute {
@@ -50,6 +62,7 @@ const STATIC_ROUTES = {
   'admin/banks': 'adminBanks',
   'admin/networks': 'adminNetworks',
   'admin/criteria': 'adminCriteria',
+  'admin/requests': 'adminRequests',
 } as const
 
 /**
@@ -91,6 +104,18 @@ export function parseHash(rawHash: string): Route {
     return CARD_ID_PATTERN.test(cardId) ? { kind: 'adminCard', cardId } : { kind: 'notFound', hash }
   }
 
+  // `#/requests` on its own, or with the card a BIN request is about. Matched
+  // here rather than added to STATIC_ROUTES because that lookup can only build
+  // a bare `{ kind }`, and this route carries a field. The card travels in the
+  // path rather than a query string because this router does not parse one.
+  if (path === 'requests') return { kind: 'requests', cardId: null }
+  const aboutCard = path.startsWith('requests/') ? path.slice('requests/'.length) : null
+  if (aboutCard !== null) {
+    return CARD_ID_PATTERN.test(aboutCard)
+      ? { kind: 'requests', cardId: aboutCard }
+      : { kind: 'notFound', hash }
+  }
+
   const kind = STATIC_ROUTES[path as keyof typeof STATIC_ROUTES]
   return kind ? { kind } : { kind: 'notFound', hash }
 }
@@ -113,6 +138,8 @@ export function hrefFor(route: Route): string {
       return `#/${route.kind}`
     case 'profile':
       return `#/u/${route.username}`
+    case 'requests':
+      return route.cardId ? `#/requests/${route.cardId}` : '#/requests'
     case 'adminBanks':
       return '#/admin/banks'
     case 'adminBank':
@@ -123,6 +150,8 @@ export function hrefFor(route: Route): string {
       return '#/admin/networks'
     case 'adminCriteria':
       return '#/admin/criteria'
+    case 'adminRequests':
+      return '#/admin/requests'
     case 'notFound':
       return '#/'
   }

@@ -5,6 +5,7 @@
  */
 
 import type { Card, CardId } from './cards'
+import type { BankOption, CardRequest, CardRequestInput, NetworkOption } from './cardRequests'
 import type { CheckoutSuccess } from './razorpayCheckout'
 import type { VerificationStatus } from '../state/walletTypes'
 
@@ -419,4 +420,54 @@ export function confirmVerification(
     method: 'POST',
     body: JSON.stringify(payload),
   })
+}
+
+/* ---------------------------------------------------------- card requests */
+
+/**
+ * The networks a card-request form can offer. The only public read on
+ * /v1/networks, and deliberately the narrowest one -- code and display name,
+ * never an id or a BIN rule.
+ *
+ * Fetched rather than hardcoded so the eight codes live in exactly one place.
+ */
+export async function fetchNetworkOptions(signal?: AbortSignal): Promise<NetworkOption[]> {
+  const body = await request<{ data: NetworkOption[] }>('/v1/networks/options', { signal })
+  return body.data
+}
+
+/**
+ * The banks a request can be filed against. Public, like the rest of
+ * `/v1/banks`.
+ *
+ * Read from the API rather than derived from the catalog in the store: the
+ * store only knows issuers that already have a card, and a bank we carry with
+ * nothing in it yet is exactly the one somebody needs to ask about.
+ */
+export async function fetchBankOptions(signal?: AbortSignal): Promise<BankOption[]> {
+  const body = await request<{ data: BankOption[] }>('/v1/banks?limit=100', { signal })
+  return body.data.map((bank) => ({ id: bank.id, name: bank.name }))
+}
+
+export function submitCardRequest(input: CardRequestInput): Promise<CardRequest> {
+  return request<CardRequest>('/v1/card-requests', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+/** The caller's own requests, newest first. Never anybody else's. */
+export async function fetchMyCardRequests(signal?: AbortSignal): Promise<CardRequest[]> {
+  const body = await request<{ data: CardRequest[] }>('/v1/card-requests', { signal })
+  return body.data
+}
+
+/**
+ * Takes back a request that has not been reviewed yet.
+ *
+ * Not a nicety: one person may only hold a handful open at once and only one
+ * per card, so without this a typo strands somebody until an admin acts.
+ */
+export function withdrawCardRequest(id: string): Promise<void> {
+  return request<void>(`/v1/card-requests/${id}`, { method: 'DELETE' })
 }

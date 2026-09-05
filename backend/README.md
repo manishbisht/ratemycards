@@ -17,6 +17,7 @@ repo root pins it; run `nvm use`.
 | wallet  | `src/modules/wallet/` | `wallet_cards` — which cards a signed-in person holds |
 | users   | `src/modules/users/` | `users` — who is behind a session |
 | verification | `src/modules/verification/` | `card_verifications` — the ₹1 proof that a card is really held |
+| cardRequests | `src/modules/cardRequests/` | `card_requests`, `card_request_bins` — cards and BIN prefixes people have asked for |
 | profiles | `src/modules/profiles/` | owns no tables — composes `users` and `wallet` into the one public read |
 
 A bank has many cards (`cards.bank_id`). A card is scored 0–10 against each
@@ -194,6 +195,13 @@ Reads are public. Writes need `Authorization: Bearer $ADMIN_TOKEN`.
 | `PUT` | `/v1/users/me/handle` | session — claims or changes the public handle |
 | `GET` | `/v1/handles/:handle` | whether claiming would succeed |
 | `GET` | `/v1/profiles/:handle` | public — somebody's score and verified cards |
+| `GET` | `/v1/networks/options` | public — the code and name of each live network, and nothing else |
+| `POST` | `/v1/card-requests` | session — asks for a card, or for BINs on one |
+| `GET` | `/v1/card-requests` | session — the caller's own requests, never anybody else's |
+| `DELETE` | `/v1/card-requests/:id` | session — withdraws a request still waiting |
+| `GET` | `/v1/card-requests/review` | admin — the queue; `status` defaults to `pending` |
+| `POST` | `/v1/card-requests/:id/approve` | admin — records that the catalog now carries it |
+| `POST` | `/v1/card-requests/:id/reject` | admin — `note` is required |
 | `POST` | `/v1/webhooks/clerk` | signed by Clerk — keeps `users` in step |
 | `GET` | `/v1/wallet` | session — the stored wallet, cards resolved and scored |
 | `POST` | `/v1/wallet/merge` | session — folds local picks in; unions, never overwrites |
@@ -446,9 +454,21 @@ alone. Wallet resolution survives that because those same three call sites also
 pass `includeInactive: true`. Both flags carry weight independently, and dropping
 either one would eat wallets.
 
-Only 33 of the 100 seeded cards have BIN rows, so the browse catalog is 33 cards
-until an admin backfills the rest. Wallets already holding the other 67 keep
-them, keep their verification status, and keep scoring.
+Only 33 of the 100 seeded cards have BIN rows. Wallets already holding the other
+67 keep them, keep their verification status, and keep scoring.
+
+**The picker no longer hides them, though the API still does.** The gate here is
+about what browse *returns*; the frontend now asks with
+`includeUnselectable: true` and renders those cards greyed, marked "Can't verify
+yet", with an offer to ask for their prefixes. Hiding them made the backlog
+invisible to the only people who can close it — somebody holding one of those
+cards knows its prefixes and could not tell us, because they could not find the
+card. See "Card requests" below.
+
+One consequence worth knowing, because it is not obvious: a wallet can now hold
+a card that nothing can ever verify, so "everything verified" has to exclude
+them or the reveal button never unlocks. `primaryCta` in
+`frontend/src/data/scoring.ts` takes a `blockedCount` for exactly that.
 
 `GET /v1/cards?includeInactive=true` also now reveals cards whose *bank* was
 deactivated. Before this, `buildWhere` checked `c.is_active` but never
@@ -458,6 +478,11 @@ deactivated. Before this, `buildWhere` checked `c.is_active` but never
 
 `cards.listCardNetworks` is the one door: a card's networks with the prefixes
 behind each, never serialised onto a card. It has two callers.
+
+(`GET /v1/networks/options` is public, but reads none of this: it publishes each
+live network's code and display name and nothing else — no id, no `binRules` —
+so a card-request form can ask which network somebody's card runs on without a
+second copy of the eight codes living in the bundle.)
 
 `POST /v1/verifications` hands out just the one card's list so Checkout can
 narrow to it. `GET /v1/cards/:id/networks` serves the admin panel, and is
@@ -574,6 +599,94 @@ confirming, the attempt stays `created` and the ₹1 auto-voids in a few days �
 the card simply is not verified and can be retried. A webhook on
 `payment.authorized` would settle those; it is the obvious next piece.
 
+## Card requests
+
+Two thirds of the catalog has no BIN prefixes on file, and the catalog will
+never carry every card in India. Both are dead ends somebody hits with no way to
+tell us. `card_requests` is that way: a signed-in person asks for a card we do
+not carry (`kind = 'card'`) or for the prefixes on one we do (`kind = 'bin'`),
+and an admin works the queue at `#/admin/requests`.
+
+**Approving writes nothing into the catalog.** The admin creates the bank, the
+card and the prefixes through `/v1/banks` and `/v1/cards` — which already
+validate all of it against `networks/binRules.ts` — and *then* calls approve,
+which records that it happened. Everything on a request is a claim: the issuer
+may be spelled three ways, the network may be wrong, and a prefix read off
+somebody's own plastic is a guess about a product family. None of it is allowed
+near the catalog unedited.
+
+That also means approval is **three unrelated HTTP calls with no transaction**.
+If the card is created and the approve then fails, the catalog has the card and
+the request is still pending. That is benign — the admin retries approve with
+the same `cardId` — and it is the honest description: approval is bookkeeping
+over work that already happened, and its check is a guard rail against a typo,
+not a transaction.
+
+### What approval does and does not check
+
+The gate is **existence and active**, and nothing else. `cards.getCard` resolves
+inactive cards on purpose, so approving against a soft-deleted card is refused
+explicitly rather than by accident.
+
+It deliberately does **not** require the card to have any BIN prefixes. A card
+with none is a supported state — see "Cards with no BINs are not selectable"
+above — so requiring them would wedge the queue whenever the data is not to
+hand, and push an admin towards inventing a prefix to clear it, straight into
+`card_bins`, which is the table a ₹1 verification matches against. The approve
+response returns `selectable` instead, and the screens say *"added, it will
+appear once we have its prefixes"* in words. Honesty here is a copy problem, not
+a constraint problem.
+
+It also does **not** require the prefixes that were asked for to be the ones
+recorded. A requester guesses `412345`; the admin knows the real prefix is
+`414767` and records that. A check on the requested value would refuse to
+approve a request the admin had fully honoured.
+
+### Adding a prefix is always read–merge–replace
+
+`PATCH /v1/cards/:id { networks }` **replaces**, and `replaceNetworks` opens
+with an unconditional `DELETE FROM card_bins WHERE card_id = ?` — all of them,
+before it looks at what you sent. Sending one network with one prefix therefore
+wipes every other network and prefix on the card, returns 200, flips
+`selectable` to false, drops the card out of the picker, and **breaks
+`POST /v1/verifications` for every user already holding it**, because that route
+refuses a card with no networks or no prefixes.
+
+So the worst case of approving a request is a silent verification outage for
+existing holders. Read the current set with `GET /v1/cards/:id/networks`, merge
+into it, send it all back. The console does this in one place —
+`mergeCardBins` in `frontend/src/data/adminApi.ts` — and nothing else may call
+`replaceCardNetworks` to *add* something.
+
+### Who reviewed it
+
+`card_requests.reviewed_by` is nullable, and that is not an oversight.
+`adminAuth` accepts either a Clerk session or the shared `ADMIN_TOKEN`, and on
+the token path `c.get('user')` is undefined — the token identifies nobody. Every
+review from the console carries an admin; every review by curl or the test suite
+carries none.
+
+### Keeping the queue honest
+
+Sign-in is the real gate. On top of it: two partial unique indexes (one open
+request per person per card, and per issuer+product, `COLLATE NOCASE`), a cap of
+ten open requests per person, and `DELETE` as the release valve — without it a
+typo strands somebody until an admin acts. A `card` request naming a product
+that already exists under a resolved issuer is refused at submit, because that
+is the same 409 `idx_cards_bank_name` would produce two steps later.
+
+Cross-user duplicates are **not** deduplicated: ten people asking for the same
+card is the most useful thing in the table. The review list orders by issuer and
+product so identical asks cluster, and the counts are never published — a public
+"23 people want this" endpoint is a free roadmap scrape.
+
+One thing to know: a typed issuer is matched case-insensitively against existing
+banks and adopted on an exact hit. That matters because `idx_banks_name` is a
+plain UNIQUE under SQLite's default BINARY collation, so `HDFC` and `hdfc` can
+already both exist as banks — and this feature hands people a keyboard pointed
+straight at that. Normalising at submit stops it getting worse; fixing the index
+is a separate migration.
+
 ## Wallets
 
 An anonymous visitor's wallet is just a set of card ids held in their browser,
@@ -614,6 +727,17 @@ Razorpay flow below, which checks a real payment. The other three statuses stay
 writable: they are the client reporting what it saw, and none of them grants
 anything. The `verified_at` timestamp is still the server's to set, and a CHECK
 constraint keeps it absent for every status but `verified`.
+
+**A verification outlives the wallet row that displayed it.** `wallet_cards`
+carries the status the screens read; `card_verifications` carries the payment
+that earned it, and removing a card deletes only the first. So a wallet row is
+born from the evidence — remove a verified card, add it back, and it comes back
+verified, dated when the rupee was actually paid — and no status write may take
+that back afterwards. Both halves are needed: with neither, the two tables
+disagree in the worst possible direction, the wallet offering a Verify button
+while `POST /v1/verifications` answers "already verified" and refuses to take a
+second rupee for a card that is already proved. Migration 0015 is the one-off
+repair for rows that drifted apart before this held.
 
 For a signed-in caller, each card from `GET /v1/cards` also carries a `wallet`
 block — `inWallet`, `verificationStatus`, `verifiedAt`. It is absent entirely

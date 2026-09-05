@@ -1,0 +1,99 @@
+.tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.tab,
+.tabOn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.tab {
+  background: transparent;
+  color: var(--text-tertiary);
+}
+
+.tab:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.tabOn {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--border-field);
+  color: var(--text);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.sub {
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Wide enough for two fields on a console window, and one on a narrow pane. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reject {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.link {
+  font-size: 13px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}

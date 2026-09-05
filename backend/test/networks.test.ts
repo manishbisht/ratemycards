@@ -215,7 +215,8 @@ describe('/v1/networks', () => {
 
   /**
    * Reads are admin-guarded too, which departs from /v1/banks and /v1/cards.
-   * Nothing public consumes this resource, so it is not published.
+   * The one public read is `/options`, covered below -- it publishes the code
+   * and name a card-request form needs and nothing this list would expose.
    */
   it('requires an admin token on every verb, reads included', async () => {
     for (const [method, path] of [
@@ -232,5 +233,38 @@ describe('/v1/networks', () => {
       })
       expect(res.status, `${method} ${path}`).toBe(401)
     }
+  })
+})
+
+describe('GET /v1/networks/options', () => {
+  it('is public, unlike every other read on this resource', async () => {
+    const res = await SELF.fetch(`${base}/v1/networks/options`)
+    expect(res.status).toBe(200)
+  })
+
+  it('publishes the code and the name, and nothing else', async () => {
+    const body = (await (await SELF.fetch(`${base}/v1/networks/options`)).json()) as any
+
+    expect(body.data.length).toBeGreaterThan(0)
+    for (const option of body.data) {
+      // Not the id, which never leaves the server, and not binRules, which is
+      // the list a card verification matches against.
+      expect(Object.keys(option).sort()).toEqual(['code', 'name'])
+    }
+    expect(body.data.map((n: any) => n.code)).toContain('visa')
+  })
+
+  it('leaves a retired network out', async () => {
+    const created = (await (
+      await SELF.fetch(`${base}/v1/networks`, {
+        method: 'POST',
+        headers: AUTH,
+        body: JSON.stringify({ code: 'optionsgone', name: 'Options Gone', binRules: [{ kind: 'glob', value: '7*' }] }),
+      })
+    ).json()) as any
+    await SELF.fetch(`${base}/v1/networks/${created.id}`, { method: 'DELETE', headers: AUTH })
+
+    const body = (await (await SELF.fetch(`${base}/v1/networks/options`)).json()) as any
+    expect(body.data.map((n: any) => n.code)).not.toContain('optionsgone')
   })
 })
