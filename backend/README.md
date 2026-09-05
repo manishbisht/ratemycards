@@ -454,8 +454,18 @@ alone. Wallet resolution survives that because those same three call sites also
 pass `includeInactive: true`. Both flags carry weight independently, and dropping
 either one would eat wallets.
 
-Only 33 of the 100 seeded cards have BIN rows. Wallets already holding the other
-67 keep them, keep their verification status, and keep scoring.
+Only 34 of the 100 active seeded cards have BIN rows. Wallets already holding
+the other 66 keep them, keep their verification status, and keep scoring.
+
+Six more cards carry prefixes while sitting **inactive** -- Axis Neo, HDFC Times
+Card, Kotak Cashback+, BOBCARD Tiara, DBS Vantage and SBI Reliance PRIME, seeded
+by 0018. They are dark on purpose. A card needs a fee and seven rubric scores
+before it can be honestly ranked, and none of that is in a BIN list; worse,
+`cardWeight(null)` is 0 while `scoreWallet` still pays the 60-point multi-card
+bonus, so an unscored card is 60 free points to anyone holding it. Inactive
+keeps them out of browse, so out of wallets, so out of scoring -- and their
+prefixes are already on file for whenever somebody prices and scores them
+through the admin panel. `cardsRead.test.ts` guards that they stay that way.
 
 **The picker no longer hides them, though the API still does.** The gate here is
 about what browse *returns*; the frontend now asks with
@@ -518,7 +528,7 @@ Two consequences worth knowing before building on this:
   RuPay and UnionPay. Consult the join from `card_networks` to `networks`; do
   not infer.
 
-Coverage is partial on purpose: 33 of the 100 seeded cards have BIN rows. A tier
+Coverage is partial on purpose: 34 of the 100 seeded cards have BIN rows. A tier
 block wider than 8 prefixes is left out, because SBI's 25 Visa Platinum prefixes
 shared across most of the portfolio assert nothing about any one card. Prefixes
 are real, from the open dataset at `github.com/venelinkochev/bin-list-data`; the

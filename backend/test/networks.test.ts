@@ -83,18 +83,24 @@ describe('networks seed', () => {
     ).first<{ n: number }>()
     expect(orphans?.n).toBe(0)
 
+    // 114 from 0010, two from 0017 so AURUM can be proved on Mastercard and
+    // IndianOil on RuPay, and ten from 0018's six inactive cards.
     const pairs = await env.DB.prepare('SELECT COUNT(*) AS n FROM card_networks').first<{ n: number }>()
-    expect(pairs?.n).toBe(114)
+    expect(pairs?.n).toBe(126)
   })
 
-  it('keeps all 99 seeded BIN prefixes across 33 cards', async () => {
+  it('keeps all 114 seeded BIN prefixes across 40 cards', async () => {
+    // 99 from 0010, four from 0017, and eleven from 0018 -- together every
+    // BookMyShow prefix that names exactly one product this catalog carries.
     const bins = await env.DB.prepare('SELECT COUNT(*) AS n FROM card_bins').first<{ n: number }>()
-    expect(bins?.n).toBe(99)
+    expect(bins?.n).toBe(114)
 
+    // 33, plus Axis IndianOil from 0017 and 0018's six -- which hold prefixes
+    // while sitting inactive, so nothing can pick them up until they are scored.
     const carded = await env.DB.prepare(
       'SELECT COUNT(DISTINCT card_id) AS n FROM card_bins',
     ).first<{ n: number }>()
-    expect(carded?.n).toBe(33)
+    expect(carded?.n).toBe(40)
   })
 
   it('defaults every seeded card to type credit', async () => {

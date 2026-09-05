@@ -70,7 +70,7 @@ nothing.
 Two contracts worth knowing before editing these screens: a card's `networks`
 and a card's `scores` are both **replaced** by their save, never merged, so the
 forms always post the complete set; and every admin card list passes
-`includeUnselectable=true`, without which the 67 seeded cards that have no BIN
+`includeUnselectable=true`, without which the 66 seeded cards that have no BIN
 prefixes are invisible to the only tool that can give them some.
 
 The requests queue leans on the first of those hard enough to be worth its own

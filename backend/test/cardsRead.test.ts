@@ -12,7 +12,8 @@ import { listCards } from '../src/modules/cards/queries'
 
 const base = 'http://api.test'
 
-const SEEDED_BANKS = 12
+// 13 since 0018 added DBS, whose only card is seeded inactive.
+const SEEDED_BANKS = 13
 const SEEDED_CARDS = 100
 const SEEDED_CRITERIA = 7
 
@@ -89,7 +90,8 @@ describe('the seeded catalog', () => {
   it('offers only the cards that carry BIN prefixes', async () => {
     // Bypasses the helper above on purpose, to see the ungated default.
     const gated = await SELF.fetch(`${base}/v1/cards`)
-    expect(((await gated.json()) as any).total).toBe(33)
+    // 34 since 0017 gave Axis IndianOil its first BIN prefix.
+    expect(((await gated.json()) as any).total).toBe(34)
     expect((await get('/v1/cards')).body.total).toBe(SEEDED_CARDS)
   })
 })
@@ -336,6 +338,46 @@ describe('card networks are tracked but not published', () => {
     expect(results.map((row: any) => row.name)).toEqual([])
   })
 
+  /**
+   * The six cards 0018 seeded dark, and the reason they are dark.
+   *
+   * `scoreWallet` is `620 + SUM(rating * 50) + (cards - 1) * 60`, and
+   * `cardWeight(null)` is 0 -- so a card with no scores contributes nothing
+   * while still collecting its 60-point multi-card bonus. Six of them would be
+   * 360 free points on a 3000 ladder. Inactive is what stops that: they cannot
+   * be browsed, so they cannot be held, so they cannot be scored into a wallet.
+   *
+   * If somebody prices and scores them and flips is_active, this test should
+   * fail and be deleted. Until then it is the guard.
+   */
+  it('keeps the unscored seeded cards out of reach', async () => {
+    const dark = ['Neo', 'Times Card', 'Cashback+', 'BOBCARD Tiara', 'Vantage', 'Reliance PRIME']
+
+    const { results } = await env.DB.prepare(
+      `SELECT c.name,
+              c.is_active,
+              (SELECT COUNT(*) FROM card_scores s WHERE s.card_id = c.id) AS scores,
+              (SELECT COUNT(*) FROM card_bins x  WHERE x.card_id = c.id) AS bins
+       FROM cards c
+       WHERE c.name IN (${dark.map(() => '?').join(',')})`,
+    )
+      .bind(...dark)
+      .all()
+
+    expect(results).toHaveLength(dark.length)
+    for (const row of results as any[]) {
+      expect(row.is_active, `${row.name} must stay inactive while unscored`).toBe(0)
+      expect(row.scores, `${row.name} has scores, so it should be active`).toBe(0)
+      // They are here for their prefixes; a dark card with none is pointless.
+      expect(row.bins, `${row.name} carries no BIN prefixes`).toBeGreaterThan(0)
+    }
+
+    // And none of them reach the catalog a person actually browses.
+    const { body } = await get(`/v1/cards?limit=${SEEDED_CARDS}`)
+    const names = new Set(body.data.map((card: any) => card.name))
+    for (const name of dark) expect(names.has(name), `${name} is browsable`).toBe(false)
+  })
+
   it('names only networks the catalog actually uses', async () => {
     const { results } = await env.DB.prepare(
       `SELECT DISTINCT nw.code AS network
@@ -343,9 +385,12 @@ describe('card networks are tracked but not published', () => {
        JOIN networks nw ON nw.id = cn.network_id
        ORDER BY nw.code`,
     ).all()
+    // jcb joined the list with 0018: Kotak Cashback+, BOBCARD Tiara and
+    // Reliance PRIME are all issued on it.
     expect(results.map((row: any) => row.network)).toEqual([
       'amex',
       'diners',
+      'jcb',
       'mastercard',
       'rupay',
       'visa',
@@ -409,12 +454,21 @@ describe('card networks are tracked but not published', () => {
 })
 
 describe('?network= filter', () => {
-  /** Ids of the cards the tables say are on this network. */
+  /**
+   * Ids of the ACTIVE cards the tables say are on this network.
+   *
+   * Scoped the way browse is -- both the card and its bank -- rather than read
+   * raw. Since 0018 the catalog carries cards seeded inactive, waiting to be
+   * priced and scored, and a raw read would expect the endpoint to return
+   * something it deliberately hides. So this now proves the exclusion too.
+   */
   async function idsOnNetwork(network: string) {
     const { results } = await env.DB.prepare(
       `SELECT cn.card_id FROM card_networks cn
        JOIN networks nw ON nw.id = cn.network_id
-       WHERE nw.code = ?`,
+       JOIN cards c     ON c.id = cn.card_id
+       JOIN banks b     ON b.id = c.bank_id
+       WHERE nw.code = ? AND c.is_active = 1 AND b.is_active = 1`,
     )
       .bind(network)
       .all()
