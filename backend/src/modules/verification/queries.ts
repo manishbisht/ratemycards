@@ -156,3 +156,34 @@ export async function hasVerified(
 
   return row !== null
 }
+
+/**
+ * When each of this person's proved cards was proved.
+ *
+ * This table is the durable half of a verification; `wallet_cards` only
+ * reflects it. The wallet asks this whenever it writes that reflection --
+ * creating a row, or being told a status by a client -- because the reflection
+ * is droppable and the fact is not. Remove a verified card and the row goes
+ * with it; add it back and the row has to be rebuilt from the evidence rather
+ * than started over at 'unverified'.
+ *
+ * MIN, so a card carries the date it was first proved. One verified attempt per
+ * card is all `hasVerified` lets through, but the aggregate has to mean
+ * something for the rows already written before that guard existed.
+ */
+export async function listProvedCards(
+  db: D1Database,
+  userId: string,
+): Promise<Map<string, string>> {
+  const { results } = await db
+    .prepare(
+      `SELECT card_id, MIN(updated_at) AS proved_at
+       FROM card_verifications
+       WHERE user_id = ? AND status = 'verified'
+       GROUP BY card_id`,
+    )
+    .bind(userId)
+    .all<{ card_id: string; proved_at: string }>()
+
+  return new Map(results.map((row) => [row.card_id, row.proved_at]))
+}

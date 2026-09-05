@@ -53,7 +53,27 @@ listenerMiddleware.startListening({
     const added = state.wallet.picked.includes(id)
 
     try {
-      await (added ? addWalletCard(id) : removeWalletCard(id))
+      if (!added) {
+        await removeWalletCard(id)
+        return
+      }
+
+      // A card that was proved before it was removed comes back proved: the
+      // payment that earned it is on file server-side and outlived the wallet
+      // row. The response says so, and adopting it is what keeps this screen
+      // from offering to verify something the server will refuse to verify
+      // twice -- the local state has no memory of a verification it dropped.
+      const wallet = await addWalletCard(id)
+      const entry = wallet.cards.find((walletCard) => walletCard.card.id === id)
+      if (entry) {
+        listenerApi.dispatch(
+          walletActions.adoptCardStatus({
+            id,
+            status: entry.verificationStatus,
+            at: entry.verifiedAt,
+          }),
+        )
+      }
     } catch (err) {
       console.error(`Could not ${added ? 'add' : 'remove'} card '${id}' on the server`, err)
     }

@@ -557,3 +557,114 @@ describe('POST /v1/verifications/:id/confirm', () => {
     expect((await json(res)).error.message).toMatch(/already verified/)
   })
 })
+
+/**
+ * A verification is a fact about a person and a card, and it lives in
+ * card_verifications. `wallet_cards.verification_status` is only that fact
+ * reflected onto the row the screens read -- so dropping the row (removing the
+ * card) must not lose the fact, and putting the row back must take it up again.
+ *
+ * Left to drift, the two disagree in the worst possible direction: the wallet
+ * says "unverified" while `hasVerified` says "already verified", and the card
+ * is stuck -- shown as unproved, and refused a fresh attempt.
+ */
+describe('a card removed from the wallet and added back', () => {
+  const wallet = async (sessionToken = token) =>
+    json(await SELF.fetch(`${base}/v1/wallet`, as(sessionToken)))
+
+  const entryFor = async (cardId: string, sessionToken = token) =>
+    (await wallet(sessionToken)).cards.find((c: any) => c.card.id === cardId)
+
+  it('comes back verified, on the date it was actually proved', async () => {
+    const cardId = await freshCard('Probe Re-add')
+    expect((await verifyWith(cardId, 'pay_card_visa_readd')).res.status).toBe(200)
+
+    const provedAt = (await entryFor(cardId)).verifiedAt
+    expect(provedAt).not.toBeNull()
+
+    await SELF.fetch(`${base}/v1/wallet/cards/${cardId}`, as(token, { method: 'DELETE' }))
+    await SELF.fetch(`${base}/v1/wallet/cards/${cardId}`, as(token, { method: 'PUT' }))
+
+    const entry = await entryFor(cardId)
+    expect(entry.verificationStatus).toBe('verified')
+    // The proof is dated when the rupee was paid, not when the row came back.
+    expect(entry.verifiedAt).toBe(provedAt)
+  })
+
+  it('does not ask for the rupee a second time', async () => {
+    const cardId = await freshCard('Probe Re-add Retry')
+    await verifyWith(cardId, 'pay_card_visa_readdretry')
+
+    await SELF.fetch(`${base}/v1/wallet/cards/${cardId}`, as(token, { method: 'DELETE' }))
+    await SELF.fetch(`${base}/v1/wallet/cards/${cardId}`, as(token, { method: 'PUT' }))
+
+    // The 409 is right -- the card *is* proved. What was wrong was a wallet row
+    // that said otherwise, leaving the screen offering a Verify button that
+    // could only ever fail.
+    const res = await SELF.fetch(
+      `${base}/v1/verifications`,
+      as(token, { method: 'POST', body: JSON.stringify({ cardId }) }),
+    )
+    expect(res.status).toBe(409)
+    expect((await entryFor(cardId)).verificationStatus).toBe('verified')
+  })
+
+  it('stays unverified when nothing ever proved it', async () => {
+    const cardId = await freshCard('Probe Re-add Unproved')
+
+    await SELF.fetch(`${base}/v1/wallet/cards/${cardId}`, as(token, { method: 'DELETE' }))
+    await SELF.fetch(`${base}/v1/wallet/cards/${cardId}`, as(token, { method: 'PUT' }))
+
+    const entry = await entryFor(cardId)
+    expect(entry.verificationStatus).toBe('unverified')
+    expect(entry.verifiedAt).toBeNull()
+  })
+
+  it('stays unverified when the only attempt was a mismatch', async () => {
+    const cardId = await freshCard('Probe Re-add Mismatched')
+    expect((await verifyWith(cardId, 'pay_card_mastercard_readd')).res.status).toBe(422)
+
+    await SELF.fetch(`${base}/v1/wallet/cards/${cardId}`, as(token, { method: 'DELETE' }))
+    await SELF.fetch(`${base}/v1/wallet/cards/${cardId}`, as(token, { method: 'PUT' }))
+
+    expect((await entryFor(cardId)).verificationStatus).toBe('unverified')
+  })
+
+  it('comes back verified through the sign-in merge too', async () => {
+    const cardId = await freshCard('Probe Re-add Merge')
+    await verifyWith(cardId, 'pay_card_visa_readdmerge')
+
+    await SELF.fetch(`${base}/v1/wallet/cards/${cardId}`, as(token, { method: 'DELETE' }))
+
+    // What a browser that still had the card in localStorage would send.
+    const merged = await json(
+      await SELF.fetch(
+        `${base}/v1/wallet/merge`,
+        as(token, { method: 'POST', body: JSON.stringify({ cardIds: [cardId] }) }),
+      ),
+    )
+
+    expect(merged.cards.find((c: any) => c.card.id === cardId).verificationStatus).toBe('verified')
+  })
+
+  it('cannot be talked out of a verification by a stale client', async () => {
+    const cardId = await freshCard('Probe Stale Tab')
+    await verifyWith(cardId, 'pay_card_visa_staletab')
+    const provedAt = (await entryFor(cardId)).verifiedAt
+
+    // A tab opened before the card was proved, still believing it has to run a
+    // verification: it paints the row pending, fails on the 409, and writes
+    // that back. Neither write may unpick a payment that already happened.
+    for (const status of ['pending', 'failed', 'unverified']) {
+      const res = await SELF.fetch(
+        `${base}/v1/wallet/cards/${cardId}`,
+        as(token, { method: 'PATCH', body: JSON.stringify({ status }) }),
+      )
+      expect(res.status).toBe(200)
+    }
+
+    const entry = await entryFor(cardId)
+    expect(entry.verificationStatus).toBe('verified')
+    expect(entry.verifiedAt).toBe(provedAt)
+  })
+})

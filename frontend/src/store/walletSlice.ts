@@ -39,6 +39,38 @@ export const walletSlice = createSlice({
       state.vstatus[id] = status
       if (status === 'verified' && at) state.verifiedAt[id] = at
     },
+    /**
+     * Takes the server's word for one card's verification.
+     *
+     * The other direction from `setVerificationStatus`, which is the local half
+     * of a write and has a listener behind it that PATCHes the server. This is
+     * an answer already in hand, so it must not be that action or adopting one
+     * would echo it straight back.
+     *
+     * Nor is it `replaceFromServer`: that adopts a whole wallet, and the
+     * response to a single card's write can be older than the picks made while
+     * it was in flight -- adopting it wholesale would undo them. One card is
+     * exactly what the response is authoritative about.
+     *
+     * It exists because a verification outlives the wallet row that displayed
+     * it: remove a proved card and add it back, and the server rebuilds the row
+     * from the payment on file. Without this, the browser would keep showing
+     * the card as unverified and offer a Verify button the server can only
+     * answer with "already verified".
+     */
+    adoptCardStatus(
+      state,
+      action: PayloadAction<{ id: CardId; status: VerificationStatus; at: string | null }>,
+    ) {
+      const { id, status, at } = action.payload
+      // The write this answers is asynchronous, so the card may have been
+      // dropped again while it was in flight. Held cards only.
+      if (!state.picked.includes(id)) return
+
+      state.vstatus[id] = status
+      if (at) state.verifiedAt[id] = at
+      else state.verifiedAt = omitKey(state.verifiedAt, id)
+    },
     signIn(state, action: PayloadAction<User>) {
       state.user = action.payload
     },

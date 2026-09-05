@@ -1,5 +1,6 @@
 import { listCards } from '../cards/queries'
 import { toPublicCard } from '../cards/cardTypes'
+import { listProvedCards } from '../verification/queries'
 import { scoreWallet } from './walletTypes'
 import type { StoredWallet, VerificationStatus, WalletCard } from './walletTypes'
 
@@ -74,14 +75,24 @@ export async function getWallet(db: D1Database, userId: string): Promise<StoredW
 /**
  * Idempotent add. A card already held keeps the verification state it had --
  * re-adding is not a reason to make someone verify again.
+ *
+ * Nor is removing and re-adding. A row is born carrying whatever
+ * card_verifications already proves about this person and this card, because
+ * the payment that earned it is not undone by dropping the row that displayed
+ * it. Starting over at 'unverified' left the card stranded: shown as unproved,
+ * while the verification module -- reading the evidence, correctly -- refused
+ * to sell a second rupee's worth of proof for something already proved.
  */
 export async function addCard(db: D1Database, userId: string, cardId: string): Promise<void> {
+  const provedAt = (await listProvedCards(db, userId)).get(cardId) ?? null
+
   await db
     .prepare(
-      `INSERT INTO wallet_cards (user_id, card_id) VALUES (?, ?)
+      `INSERT INTO wallet_cards (user_id, card_id, verification_status, verified_at)
+       VALUES (?, ?, ?, ?)
        ON CONFLICT(user_id, card_id) DO NOTHING`,
     )
-    .bind(userId, cardId)
+    .bind(userId, cardId, provedAt === null ? 'unverified' : 'verified', provedAt)
     .run()
 }
 
@@ -93,13 +104,24 @@ export async function removeCard(db: D1Database, userId: string, cardId: string)
 }
 
 /**
- * Records what the client says the verification came to. The server does not
- * yet run the check itself, so this trusts the caller for their own wallet --
- * the trade-off that comes with the flow still living in the browser.
+ * Records what a verification came to, for one card in one person's wallet.
+ *
+ * Called both by the verification module, which has just watched Razorpay
+ * decide, and by PATCH /v1/wallet/cards/:cardId, which takes the client's word
+ * for it -- the trade-off that comes with the flow still living partly in the
+ * browser.
+ *
+ * A proved card is the one thing neither caller may undo. Evidence outranks
+ * whoever is talking: a tab that still believes a card needs verifying will
+ * paint it 'pending', fail on the 409 the verification module answers with, and
+ * write 'failed' back -- and that is precisely the disagreement between the two
+ * tables that strands a card. A second attempt landing 'mismatched' after a
+ * first one succeeded is the same case seen from the server's side.
  *
  * `verified_at` is set here rather than accepted from the client: a timestamp
- * is a fact about when the server was told, and the CHECK constraint requires
- * it to be absent for every status but 'verified'.
+ * is a fact about when the card was proved, and the CHECK constraint requires
+ * it to be absent for every status but 'verified'. COALESCE keeps the date the
+ * proof already carries, so re-affirming a verification cannot re-date it.
  */
 export async function setVerificationStatus(
   db: D1Database,
@@ -107,7 +129,12 @@ export async function setVerificationStatus(
   cardId: string,
   status: VerificationStatus,
 ): Promise<boolean> {
-  const verifiedAt = status === 'verified' ? NOW : 'NULL'
+  const effective =
+    status === 'verified' || !(await listProvedCards(db, userId)).has(cardId)
+      ? status
+      : 'verified'
+
+  const verifiedAt = effective === 'verified' ? `COALESCE(verified_at, ${NOW})` : 'NULL'
 
   const result = await db
     .prepare(
@@ -115,7 +142,7 @@ export async function setVerificationStatus(
        SET verification_status = ?, verified_at = ${verifiedAt}, updated_at = ${NOW}
        WHERE user_id = ? AND card_id = ?`,
     )
-    .bind(status, userId, cardId)
+    .bind(effective, userId, cardId)
     .run()
 
   return (result.meta.changes ?? 0) > 0
@@ -135,15 +162,21 @@ export async function mergeCards(
   cardIds: string[],
 ): Promise<StoredWallet> {
   if (cardIds.length > 0) {
+    // One read for the whole batch, then the same rule addCard follows: a card
+    // this account has proved arrives proved, whatever the browser believed.
+    const proved = await listProvedCards(db, userId)
+
     await db.batch(
-      cardIds.map((cardId) =>
-        db
+      cardIds.map((cardId) => {
+        const provedAt = proved.get(cardId) ?? null
+        return db
           .prepare(
-            `INSERT INTO wallet_cards (user_id, card_id) VALUES (?, ?)
+            `INSERT INTO wallet_cards (user_id, card_id, verification_status, verified_at)
+             VALUES (?, ?, ?, ?)
              ON CONFLICT(user_id, card_id) DO NOTHING`,
           )
-          .bind(userId, cardId),
-      ),
+          .bind(userId, cardId, provedAt === null ? 'unverified' : 'verified', provedAt)
+      }),
     )
   }
 
