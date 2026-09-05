@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Button } from '../components/Button'
-import { FannedDeck } from '../components/FannedDeck'
+import { DeckStrip } from '../components/DeckStrip'
 import { Screen } from '../components/Screen'
+import { ShareCopied } from '../components/ShareCopied'
 import type { GlowSpec } from '../components/Screen'
 import { TierPill } from '../components/TierPill'
 import { fetchProfile } from '../data/api'
 import type { PublicProfile, Tier } from '../data/api'
 import { PUBLIC_DOMAIN, profileUrl } from '../data/brand'
 import type { Card } from '../data/cards'
-import { summaryFor } from '../data/scoring'
+import { shareLine, summaryFor } from '../data/scoring'
+import { renderShareImage } from '../data/shareImage'
 import { navigate } from '../router/hashRouter'
 import { useWalletScore } from '../state/useWalletScore'
 import { useAppSelector } from '../store/hooks'
@@ -24,6 +26,7 @@ const GLOWS: GlowSpec[] = [
 type ProfileView = {
   handle: string
   rating: number
+  maxScore: number
   tier: Tier
   verifiedCount: number
   summary: string
@@ -37,6 +40,13 @@ export function ProfilePage({ username }: { username: string }) {
   const { score } = useWalletScore(verifiedCards.map((card) => card.id))
   const rating = score.score
   const [copied, setCopied] = useState(false)
+  /**
+   * The share waiting to be confirmed: where it is going, and whether the image
+   * made it onto the clipboard. Null when no dialog is up.
+   */
+  const [pendingShare, setPendingShare] = useState<
+    { url: string; where: string; copied: boolean } | null
+  >(null)
 
   // Your own profile renders from local state, so it is instant and correct
   // while a claim is still settling. Anyone else's comes from the API.
@@ -90,6 +100,7 @@ export function ProfilePage({ username }: { username: string }) {
     ? {
         handle: username,
         rating,
+        maxScore: score.maxScore,
         tier: score.tier,
         verifiedCount: verifiedCards.length,
         summary: summaryFor(rating, verifiedCards.length),
@@ -100,6 +111,7 @@ export function ProfilePage({ username }: { username: string }) {
       ? {
           handle: fetched.handle,
           rating: fetched.score,
+          maxScore: fetched.maxScore,
           tier: fetched.tier,
           verifiedCount: fetched.cardCount,
           summary: summaryFor(fetched.score, fetched.cardCount),
@@ -147,10 +159,60 @@ export function ProfilePage({ username }: { username: string }) {
 
   const tier = view.tier
   const url = profileUrl(view.handle)
-  const shareText = `${view.handle} scored ${view.rating}/3000 on Rate My Cards.`
+  const shareText = shareLine({
+    isOwn: view.isOwn,
+    handle: view.handle,
+    rating: view.rating,
+    maxScore: view.maxScore,
+    tierName: tier.name,
+    verifiedCount: view.verifiedCount,
+  })
 
-  const openShare = (target: string) => {
-    window.open(target, '_blank', 'noopener,noreferrer')
+  /**
+   * Copies the profile as an image, then asks before going anywhere.
+   *
+   * Every one of these intents can carry text and a link and none of them can
+   * carry a picture, so the image travels the only way it can: on the clipboard,
+   * ready to paste into the post.
+   *
+   * NOTHING IS OPENED HERE. An earlier version copied and redirected in one
+   * breath, and the result was a message nobody could read -- the share tab took
+   * the screen before the words landed. The redirect is a button on the dialog
+   * now, which also means it carries its own user gesture and has no popup
+   * blocker to argue with.
+   *
+   * The image is still finished and written while this document has focus,
+   * because an unfocused document is refused the clipboard outright -- measured,
+   * not guessed. That costs about 30ms once fonts and card art are warm.
+   */
+  const shareWith = async (target: string, where: string) => {
+    // Declared without a value: both branches below set it, and an initialiser
+    // nothing reads is the kind of dead assignment lint is right about.
+    let copied: boolean
+
+    try {
+      const image = await renderShareImage({
+        handle: view.handle,
+        rating: view.rating,
+        maxScore: view.maxScore,
+        tier: { name: view.tier.name, color: view.tier.color },
+        verifiedCount: view.verifiedCount,
+        summary: view.summary,
+        cards: view.cards.map((card) => ({ issuer: card.issuer, name: card.name })),
+        domain: PUBLIC_DOMAIN,
+        url,
+      })
+
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': image })])
+      copied = true
+    } catch {
+      // No clipboard, no ClipboardItem, or a browser that will not take a PNG.
+      // The share still goes ahead; only the picture is lost, and the dialog
+      // says so rather than pretending.
+      copied = false
+    }
+
+    setPendingShare({ url: target, where, copied })
   }
 
   return (
@@ -171,12 +233,27 @@ export function ProfilePage({ username }: { username: string }) {
         <p className={styles.summary}>{view.summary}</p>
       </div>
 
-      <FannedDeck cards={view.cards} size="sm" className={styles.deck} />
+      {/* The picker's pile, not the fanned deck this screen used to draw.
+          FannedDeck crops landscape card art into a portrait tile and prints
+          the card's name over the top of artwork that already carries it;
+          DeckStrip keeps the art at the 1.6 it was drawn at and lets it speak
+          for itself. Every card on a profile is verified -- that is what the
+          public projection returns -- so the status is a constant here. */}
+      <DeckStrip
+        cards={view.cards}
+        statusOf={() => 'verified'}
+        className={styles.deck}
+      />
 
       <div className={styles.footer}>
         <Button
           variant="whatsapp"
-          onClick={() => openShare(`https://wa.me/?text=${encodeURIComponent(`${shareText} ${url}`)}`)}
+          onClick={() =>
+            void shareWith(
+              `https://wa.me/?text=${encodeURIComponent(`${shareText} ${url}`)}`,
+              'WhatsApp',
+            )
+          }
         >
           Share on WhatsApp
         </Button>
@@ -184,8 +261,9 @@ export function ProfilePage({ username }: { username: string }) {
           <Button
             variant="secondary"
             onClick={() =>
-              openShare(
+              void shareWith(
                 `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(url)}`,
+                'X',
               )
             }
           >
@@ -194,8 +272,9 @@ export function ProfilePage({ username }: { username: string }) {
           <Button
             variant="secondary"
             onClick={() =>
-              openShare(
+              void shareWith(
                 `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`,
+                'LinkedIn',
               )
             }
           >
@@ -224,6 +303,18 @@ export function ProfilePage({ username }: { username: string }) {
           {view.isOwn ? 'Edit your wallet →' : 'Rate your own wallet →'}
         </button>
       </div>
+
+      {pendingShare ? (
+        <ShareCopied
+          where={pendingShare.where}
+          copied={pendingShare.copied}
+          onContinue={() => {
+            window.open(pendingShare.url, '_blank', 'noopener,noreferrer')
+            setPendingShare(null)
+          }}
+          onClose={() => setPendingShare(null)}
+        />
+      ) : null}
     </Screen>
   )
 }

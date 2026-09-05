@@ -1,0 +1,106 @@
+/* Absolute rather than fixed, so it covers the phone column and not the window.
+   `Screen` is the positioned ancestor and is the full height of that column, so
+   the two line up exactly -- and on a desktop the dialog stays inside the 390px
+   frame instead of floating in the gutters. */
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(6, 6, 10, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: fade 140ms ease-out;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.panel {
+  width: 100%;
+  max-width: 320px;
+  padding: 26px 22px 18px;
+  border-radius: 22px;
+  background: var(--surface-panel, #15151d);
+  border: 1px solid var(--border-soft);
+  box-shadow: 0 28px 64px rgba(0, 0, 0, 0.6);
+  text-align: center;
+  animation: rise 160ms ease-out;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+/* The verified green this app already uses for "it worked". */
+.mark {
+  width: 46px;
+  height: 46px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--status-verified);
+  background: rgba(52, 211, 153, 0.14);
+  border: 1px solid rgba(52, 211, 153, 0.4);
+}
+
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.body {
+  margin: 9px 0 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.continue {
+  margin-top: 20px;
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 14px;
+  background: #fff;
+  color: var(--bg);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.continue:active {
+  opacity: 0.85;
+}
+
+.cancel {
+  margin-top: 6px;
+  width: 100%;
+  padding: 11px;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}

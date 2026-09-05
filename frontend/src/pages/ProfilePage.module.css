@@ -73,6 +73,12 @@
 
 .deck {
   margin-top: 26px;
+  /* Centred rather than the picker's left-aligned pile: everything above it on
+     this screen is centred, and four tiles come to 226px inside a 346px box.
+     The left padding exists there to keep the first tile's shadow off the edge,
+     which centring already does. */
+  justify-content: center;
+  padding-left: 0;
 }
 
 .footer {
