@@ -42,6 +42,14 @@ export function ProfilePage({ username }: { username: string }) {
   // while a claim is still settling. Anyone else's comes from the API.
   const own = state.handle === username
 
+  // ...but only once that local state is worth anything. localStorage no longer
+  // carries the cards past the sign-in hand-off, so a reload starts with an
+  // empty wallet, and rendering it would put 0/3000 and a bare deck on the one
+  // screen people share. Until the wallet lands, your own profile is read from
+  // the public endpoint like anybody else's -- the same numbers, one request,
+  // and no window where the page is blank or wrong.
+  const ownReady = own && state.synced
+
   // One settled answer, tagged with the handle it belongs to. Derived rather
   // than reset at the top of the effect: this project's react-hooks config
   // rejects a synchronous setState in an effect body, and keying the result
@@ -52,7 +60,7 @@ export function ProfilePage({ username }: { username: string }) {
   >(null)
 
   useEffect(() => {
-    if (own) return
+    if (ownReady) return
 
     const controller = new AbortController()
 
@@ -64,14 +72,21 @@ export function ProfilePage({ username }: { username: string }) {
       })
 
     return () => controller.abort()
-  }, [own, username])
+  }, [ownReady, username])
 
   const answer = settled?.handle === username ? settled : null
   const fetched = answer?.profile ?? null
-  /** Settled, and there is nothing there — as opposed to still loading. */
-  const missing = answer !== null && answer.profile === null
+  /**
+   * Settled, and there is nothing there — as opposed to still loading.
+   *
+   * Never for your own handle. Now that the public read also backs your own
+   * profile until the wallet lands, a 404 on it would otherwise offer you a
+   * handle you are already holding, and it would win the race against the
+   * wallet often enough to be seen.
+   */
+  const missing = answer !== null && answer.profile === null && !own
 
-  const view: ProfileView | null = own
+  const view: ProfileView | null = ownReady
     ? {
         handle: username,
         rating,
@@ -99,7 +114,11 @@ export function ProfilePage({ username }: { username: string }) {
             annualFee: 0,
             selectable: true,
           })),
-          isOwn: false,
+          // The handle decides this, not which endpoint the numbers came
+          // from: your own profile is read publicly until the wallet lands,
+          // and the footer must still offer to edit it rather than to rate a
+          // wallet you already have.
+          isOwn: own,
         }
       : null
 
