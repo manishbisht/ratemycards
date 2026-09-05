@@ -1,17 +1,28 @@
 import { useAuth } from '@clerk/react'
 import { useEffect, useRef } from 'react'
-import { mergeWallet } from '../data/api'
+import { fetchWallet, mergeWallet } from '../data/api'
 import { useAppDispatch, useAppSelector } from '../store/hooks'
 import { walletActions } from '../store/walletSlice'
 import { toWalletState } from './walletSync'
 
 /**
- * Reconciles this browser's wallet with the account's, once per session.
+ * Loads the account's wallet into this browser, once per session.
  *
- * The merge is a union on the server, so the cards someone picked before
- * signing in join whatever the account already held rather than replacing it.
- * What comes back is adopted wholesale, which is also what makes the server the
- * source of truth from here on -- every later change writes through.
+ * Two ways in, and which one runs is the whole point. If this browser is
+ * holding picks the server has not seen -- someone chose cards before signing
+ * in -- they are merged, and the union means they join whatever the account
+ * already held rather than replacing it. With nothing to hand off there is
+ * nothing to merge, so the wallet is simply read.
+ *
+ * It used to merge every time, because the blob in localStorage kept a copy of
+ * the wallet after the hand-off and `synced` does not survive a reload. That
+ * re-sent the account its own cards on every page load, and since the union
+ * only ever inserts, a card removed on another device came back. `picked` is
+ * now empty once the server owns the wallet (see saveWalletState), which is
+ * what makes the branch below mean what it says.
+ *
+ * Either way the answer is adopted wholesale, which is what makes the server
+ * the source of truth from here on -- every later change writes through.
  */
 export function useWalletServerSync(): void {
   const dispatch = useAppDispatch()
@@ -29,15 +40,22 @@ export function useWalletServerSync(): void {
     attempted.current = true
     let cancelled = false
 
-    mergeWallet(picked)
+    // A merge is a write, so it is only worth making when there is genuinely
+    // something to write. Reading is the common case by far: every load after
+    // the first one for a given browser.
+    const loaded = picked.length > 0 ? mergeWallet(picked) : fetchWallet()
+
+    loaded
       .then((wallet) => {
         if (!cancelled) dispatch(walletActions.replaceFromServer(toWalletState(wallet)))
       })
       .catch((err) => {
         // The wallet stays local and unsynced. Leaving it that way is the
         // honest outcome: the write-through listeners check `synced`, so
-        // nothing silently half-persists.
-        console.error('Could not sync the wallet with the server', err)
+        // nothing silently half-persists -- and because an un-merged blob is
+        // still persisted, picks waiting to be handed off survive to retry on
+        // the next load rather than being lost here.
+        console.error('Could not load the wallet from the server', err)
       })
 
     return () => {

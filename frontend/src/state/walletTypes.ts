@@ -19,6 +19,15 @@ export type WalletState = {
   synced: boolean
   /** The handle the user has claimed, once they have claimed one. */
   handle: string | null
+  /**
+   * Whether `handle` is an answer rather than an absence of one.
+   *
+   * `handle: null` on its own is ambiguous -- it is both "the server has not
+   * been asked yet" and "asked, and this account has no handle" -- and the two
+   * route a returning user to different screens. Anything that decides on the
+   * handle has to wait for this.
+   */
+  handleSynced: boolean
   /** ISO dates, so the verify note can name a real day. */
   verifiedAt: Record<CardId, string>
 }

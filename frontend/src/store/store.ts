@@ -28,8 +28,15 @@ const listenerMiddleware = createListenerMiddleware()
  * yet have this wallet and telling it about one card at a time would be wrong.
  *
  * A failure is logged rather than rolled back. Reverting a card someone just
- * tapped is its own kind of wrong, and the next sign-in merge reconciles what
- * drifted; what must not happen is silently believing a write landed.
+ * tapped is its own kind of wrong; what must not happen is silently believing a
+ * write landed.
+ *
+ * Drift from a failed write used to heal itself, because the next load merged
+ * this browser's copy back up. It no longer does: that copy is exactly what
+ * resurrected cards deleted on other devices, so a load now reads the wallet
+ * instead, and the server's view wins. The two are the same mechanism seen from
+ * opposite sides -- local state cannot re-assert itself without also being able
+ * to undo someone's removal.
  */
 function isServerBacked(state: RootState): boolean {
   return state.wallet.user !== null && state.wallet.synced

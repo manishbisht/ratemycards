@@ -79,9 +79,15 @@ export const walletSlice = createSlice({
      * behind it, or left behind after a rename -- gets cleared. Without this,
      * a `null` from the server would be silently ignored and a browser could
      * carry a handle forever that the server has never heard of.
+     *
+     * Both writers -- the `/v1/users/me` hydrate at startup and a fresh claim
+     * on the claim screen -- go through here, which is why `handleSynced` is
+     * set here rather than at either call site: after this, `handle` is an
+     * answer and may be routed on.
      */
     claimHandle(state, action: PayloadAction<string | null>) {
       state.handle = action.payload
+      state.handleSynced = true
     },
     pruneCards(state, action: PayloadAction<CardId[]>) {
       const validIds = new Set(action.payload)
