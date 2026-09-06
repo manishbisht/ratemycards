@@ -74,6 +74,9 @@ export function summaryFor(score: number, cardCount: number): string {
  * The tier and the verified count do the work the bare number cannot. 2712 is
  * meaningless without knowing it is out of 3000 and what that makes you, and
  * "verified" is the whole difference between this and a list somebody typed.
+ *
+ * The hashtag is how the posts are found again: searching #RateMyCards on X
+ * or LinkedIn rounds up every share, which a bare link never would.
  */
 export function shareLine(profile: {
   isOwn: boolean
@@ -92,5 +95,5 @@ export function shareLine(profile: {
   }
   const challenge = profile.isOwn ? 'Think your wallet beats mine?' : 'Think yours beats it?'
 
-  return `${who} scored ${profile.rating}/${profile.maxScore} on Rate My Cards — ${boast.join(', ')}. ${challenge}`
+  return `${who} scored ${profile.rating}/${profile.maxScore} on Rate My Cards — ${boast.join(', ')}. ${challenge} #RateMyCards`
 }
