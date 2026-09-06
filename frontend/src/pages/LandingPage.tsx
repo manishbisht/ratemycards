@@ -29,19 +29,28 @@ export function LandingPage() {
           <div
             className={styles.stackWrap}
             role="img"
-            aria-label="A wallet of three cards, from HDFC, American Express and HSBC."
+            aria-label="A wallet of three cards: HSBC Premier, American Express Platinum Charge and HDFC Infinia Metal."
           >
             {/* Fixed art rather than catalog data: the landing screen paints
                 before the API has been asked for anything. Back of the stack
                 first, so each card overlaps the one behind it. */}
             <div className={styles.stack}>
-              <img className={styles.cardBack} src={cardArtSrc('HSBC')} alt="" />
-              <img
-                className={styles.cardMid}
-                src={cardArtSrc('American Express')}
-                alt=""
-              />
-              <img className={styles.cardFront} src={cardArtSrc('HDFC')} alt="" />
+              <div className={`${styles.card} ${styles.cardBack}`}>
+                <img className={styles.cardArt} src={cardArtSrc('HSBC')} alt="" />
+                <span className={styles.cardName}>Premier</span>
+              </div>
+              <div className={`${styles.card} ${styles.cardMid}`}>
+                <img
+                  className={styles.cardArt}
+                  src={cardArtSrc('American Express')}
+                  alt=""
+                />
+                <span className={styles.cardName}>Platinum Charge</span>
+              </div>
+              <div className={`${styles.card} ${styles.cardFront}`}>
+                <img className={styles.cardArt} src={cardArtSrc('HDFC')} alt="" />
+                <span className={styles.cardName}>Infinia Metal</span>
+              </div>
             </div>
           </div>
 
