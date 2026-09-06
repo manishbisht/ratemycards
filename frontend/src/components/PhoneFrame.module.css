@@ -55,8 +55,10 @@
   background: var(--bg);
 }
 
-/* Wider than any phone, so this is a tablet or a desktop: run as the centred
-   column the design was drawn as, with the backdrop showing either side.
+/* Wider than any phone, so this is a tablet or a desktop: run as a centred
+   column with the backdrop showing either side. The design was drawn at 390px;
+   the desktop column runs a little wider than that on purpose, since a mouse
+   viewer has the room and the screens all stretch cleanly.
 
    The cap and the hairline are one rule on purpose. Apart, the cap bound from
    390px up while the border only appeared at 700px, which left everything
@@ -64,7 +66,7 @@
    to explain them. Together, a gutter always reads as a deliberate edge. */
 @media (min-width: 480px) {
   .frame {
-    max-width: 390px;
+    max-width: 480px;
     border-inline: 1px solid var(--hairline);
   }
 }
