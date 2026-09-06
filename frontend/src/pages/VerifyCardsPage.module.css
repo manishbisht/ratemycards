@@ -163,6 +163,14 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* The way forward on a card nothing can verify: same shape as .remove, so the
+   note's two offers read as a pair, and the accent rather than the alarm
+   colour, because this one is the constructive half. */
+.noteLink {
+  composes: remove;
+  color: var(--accent);
+}
+
 /* Takes the note's place, so it takes the note's spacing too. */
 .confirm {
   margin-top: 12px;

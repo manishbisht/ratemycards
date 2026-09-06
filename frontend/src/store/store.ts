@@ -83,9 +83,18 @@ listenerMiddleware.startListening({
 listenerMiddleware.startListening({
   actionCreator: walletActions.setVerificationStatus,
   effect: async (action, listenerApi) => {
-    if (!isServerBacked(listenerApi.getState() as RootState)) return
+    const state = listenerApi.getState() as RootState
+    if (!isServerBacked(state)) return
 
     const { id, status } = action.payload
+    // The reducer has already declined to record this if the card is no longer
+    // held, so writing it through would tell the server something this browser
+    // does not itself believe -- and PATCH answers 404 for a card that is not in
+    // the wallet. That is the shape a removal takes when it races a
+    // verification: the card goes, then the attempt it left behind reports how
+    // it went. Nothing to record, nothing to send.
+    if (!state.wallet.picked.includes(id)) return
+
     try {
       await setWalletCardStatus(id, status)
     } catch (err) {

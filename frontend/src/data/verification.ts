@@ -15,6 +15,16 @@ export const STATUS_COLOR: Record<VerificationStatus, string> = {
   failed: '#F87171',
 }
 
+/**
+ * Why a card with no BIN prefixes on file shows 'Can't verify'.
+ *
+ * Not part of `verifyNote`, because it is not a verification status: the card
+ * is `unverified` like any other, and what stops it is a gap in the catalog
+ * rather than anything this wallet has or has not done.
+ */
+export const BLOCKED_NOTE =
+  'No card numbers are on file for this card yet, so nothing here can check it.'
+
 export function verifyNote(status: VerificationStatus, verifiedAt?: string): string {
   switch (status) {
     case 'pending':

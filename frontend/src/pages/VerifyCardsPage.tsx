@@ -1,14 +1,14 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Button } from '../components/Button'
 import { CardArt } from '../components/CardArt'
 import { ConfirmRemove } from '../components/ConfirmRemove'
 import { Screen } from '../components/Screen'
 import type { GlowSpec } from '../components/Screen'
 import { confirmVerification, startVerification } from '../data/api'
-import type { CardId } from '../data/cards'
+import type { Card, CardId } from '../data/cards'
 import { loadCheckout, openCheckout } from '../data/razorpayCheckout'
 import { verifyLine } from '../data/scoring'
-import { STATUS_COLOR, STATUS_LABEL, verifyNote } from '../data/verification'
+import { BLOCKED_NOTE, STATUS_COLOR, STATUS_LABEL, verifyNote } from '../data/verification'
 import { navigate } from '../router/hashRouter'
 import { useWalletScore } from '../state/useWalletScore'
 import { useAppDispatch, useAppSelector } from '../store/hooks'
@@ -20,6 +20,31 @@ const GLOWS: GlowSpec[] = [
   { color: 'rgba(56,189,248,0.26)', size: 440, top: -170, left: -130 },
   { color: 'rgba(88,28,135,0.6)', size: 460, bottom: -170, right: -140 },
 ]
+
+/**
+ * Where a row sits, lowest first -- by what it asks of the person reading it.
+ *
+ * A card waiting to be proved is the whole point of the screen, so it leads. A
+ * proved one is finished business: still here, still removable, but it has no
+ * claim on the top. One nothing can verify goes last, because no tap on this
+ * screen can move it forward -- see `unverifiable` below.
+ *
+ * The picker ranks its own list on the same idea but not the same order (see
+ * CardPickerPage's RANK), because it is also offering cards nobody holds. This
+ * list only ever holds the wallet.
+ */
+const ROW_RANK = { toVerify: 0, verified: 1, blocked: 2 }
+
+/** Drops one card's entry from a per-card map, leaving the rest alone. */
+function forget<T>(source: Record<CardId, T>, id: CardId): Record<CardId, T> {
+  if (!(id in source)) return source
+
+  const next: Record<CardId, T> = {}
+  for (const key of Object.keys(source)) {
+    if (key !== id) next[key] = source[key]
+  }
+  return next
+}
 
 export function VerifyCardsPage() {
   const [openNote, setOpenNote] = useState<CardId | null>(null)
@@ -50,6 +75,27 @@ export function VerifyCardsPage() {
   const blockedCount = chosenCards.filter((card) => !card.selectable).length
   const statusOf = (id: CardId) => wallet.vstatus[id] ?? 'unverified'
   const verifiedDateOf = (id: CardId) => wallet.verifiedAt[id]
+
+  /**
+   * The wallet, grouped by ROW_RANK. Sorting a copy, and a stable sort, so the
+   * order the cards were added survives inside each group.
+   */
+  const rows = useMemo(() => {
+    const rankOf = (card: Card): number => {
+      // Asked first, and without consulting the wallet: a card with no BIN
+      // prefixes on file cannot be proved by anybody, whatever this wallet
+      // believes about it.
+      if (!card.selectable) return ROW_RANK.blocked
+      return (wallet.vstatus[card.id] ?? 'unverified') === 'verified'
+        ? ROW_RANK.verified
+        : ROW_RANK.toVerify
+    }
+
+    return chosenCards
+      .map((card) => ({ card, rank: rankOf(card) }))
+      .sort((a, b) => a.rank - b.rank)
+      .map(({ card }) => card)
+  }, [chosenCards, wallet.vstatus])
 
   /**
    * The real verification: mint an order, open Checkout narrowed to this card's
@@ -123,6 +169,28 @@ export function VerifyCardsPage() {
     [busy, dispatch, wallet.user],
   )
 
+  /**
+   * Takes a card out of the wallet and forgets what this screen was holding
+   * about it.
+   *
+   * The second half matters because the wallet is not the only place a card
+   * leaves a trace: an outcome message from a failed attempt, or a note left
+   * open, is keyed by card id and would still be sitting there if the card were
+   * added back from the picker. The store's own removal is the same
+   * `toggleCard` the picker uses, so it takes the one path that writes through
+   * to the server.
+   */
+  const removeFromWallet = useCallback(
+    (cardId: CardId) => {
+      setConfirming(null)
+      setOpenNote(null)
+      setOutcome((current) => forget(current, cardId))
+      setBusy((current) => forget(current, cardId))
+      dispatch(walletActions.toggleCard(cardId))
+    },
+    [dispatch],
+  )
+
   const chosenCount = chosenCards.length
   const verifiedCount = verifiedCards.length
 
@@ -150,12 +218,12 @@ export function VerifyCardsPage() {
       </p>
 
       <div className={styles.rows}>
-        {chosenCards.length === 0 ? (
+        {rows.length === 0 ? (
           <div className={styles.empty}>
             No cards yet. Add a few from your wallet and they will show up here to verify.
           </div>
         ) : (
-          chosenCards.map((card) => {
+          rows.map((card) => {
             const status = statusOf(card.id)
             const isVerified = status === 'verified'
             // In flight in this tab. A stale server-side 'pending' still shows
@@ -211,11 +279,10 @@ export function VerifyCardsPage() {
                           : 'transparent',
                     }}
                     onClick={() => {
-                      if (unverifiable) {
-                        navigate({ kind: 'requests', cardId: card.id })
-                        return
-                      }
-                      if (isVerified) {
+                      // Both of these open the row's note instead of acting:
+                      // one has nothing left to do, the other has nothing this
+                      // screen can do. What each offers lives in the note.
+                      if (unverifiable || isVerified) {
                         setConfirming(null)
                         setOpenNote((current) => (current === card.id ? null : card.id))
                         return
@@ -225,7 +292,7 @@ export function VerifyCardsPage() {
                     }}
                   >
                     {unverifiable
-                      ? 'Help us'
+                      ? 'Options'
                       : isVerified
                         ? 'Verified'
                         : isPending
@@ -240,19 +307,38 @@ export function VerifyCardsPage() {
                   <ConfirmRemove
                     name={card.name}
                     className={styles.confirm}
-                    onConfirm={() => {
-                      setConfirming(null)
-                      setOpenNote(null)
-                      // The same toggle the picker uses, so removal takes the
-                      // one path that writes through to the server.
-                      dispatch(walletActions.toggleCard(card.id))
-                    }}
+                    onConfirm={() => removeFromWallet(card.id)}
                     onCancel={() => setConfirming(null)}
                   />
-                ) : openNote === card.id && status !== 'unverified' ? (
+                ) : openNote === card.id && (unverifiable || status !== 'unverified') ? (
                   <div className={styles.note}>
-                    {outcome[card.id] || verifyNote(status, verifiedDateOf(card.id))}
-                    {isVerified ? (
+                    {unverifiable
+                      ? BLOCKED_NOTE
+                      : outcome[card.id] || verifyNote(status, verifiedDateOf(card.id))}
+                    {unverifiable ? (
+                      <>
+                        <button
+                          type="button"
+                          className={styles.noteLink}
+                          onClick={() => navigate({ kind: 'requests', cardId: card.id })}
+                        >
+                          Tell us its first 6 digits
+                        </button>
+                        {/* Straight out, with no "are you sure" in front of it.
+                            ConfirmRemove exists to say the ₹1 is not lost, and
+                            this card has never been asked for one -- putting it
+                            here would answer a question nobody asked. Adding it
+                            back is one tap in the picker, which lists cards
+                            nothing can verify for exactly this reason. */}
+                        <button
+                          type="button"
+                          className={styles.remove}
+                          onClick={() => removeFromWallet(card.id)}
+                        >
+                          Remove from wallet
+                        </button>
+                      </>
+                    ) : isVerified ? (
                       <button
                         type="button"
                         className={styles.remove}

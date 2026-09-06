@@ -31,11 +31,25 @@ export const walletSlice = createSlice({
     startVerification(state, action: PayloadAction<CardId>) {
       state.vstatus[action.payload] = 'pending'
     },
+    /**
+     * The local half of a verification write, with a listener behind it that
+     * PATCHes the server.
+     *
+     * Held cards only, for the same reason `adoptCardStatus` checks: a
+     * verification outlives the tap that started it, so the card can be gone by
+     * the time the answer arrives -- someone who removes a card mid-attempt, or
+     * dismisses the modal after removing it. Writing the status anyway left a
+     * `vstatus` entry for a card no longer in `picked`, and the listener then
+     * asked the server to record a verification against a wallet row that no
+     * longer exists, which it can only answer with a 404.
+     */
     setVerificationStatus(
       state,
       action: PayloadAction<{ id: CardId; status: VerificationStatus; at?: string }>,
     ) {
       const { id, status, at } = action.payload
+      if (!state.picked.includes(id)) return
+
       state.vstatus[id] = status
       if (status === 'verified' && at) state.verifiedAt[id] = at
     },
