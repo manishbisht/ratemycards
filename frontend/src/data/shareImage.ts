@@ -75,9 +75,9 @@ async function waitForFont(): Promise<void> {
  * stamped with explicit dimensions before it becomes an image -- which also
  * keeps the whole thing same-origin, since a blob URL inherits nothing.
  */
-async function loadArt(issuer: string, name: string): Promise<HTMLImageElement | null> {
+async function loadArt(issuer: string): Promise<HTMLImageElement | null> {
   try {
-    const source = await fetch(cardArtSrc(issuer, name)).then((r) => (r.ok ? r.text() : null))
+    const source = await fetch(cardArtSrc(issuer)).then((r) => (r.ok ? r.text() : null))
     if (!source) return null
 
     const sized = source.replace('<svg', `<svg width="${ART_W}" height="${ART_H}"`)
@@ -286,7 +286,7 @@ export async function renderShareImage(card: ShareCard): Promise<Blob> {
   const afterSummary = wrap(ctx, card.summary, 648, 780, 48)
 
   const art = await Promise.all(
-    card.cards.slice(0, MAX_TILES).map((c) => loadArt(c.issuer, c.name)),
+    card.cards.slice(0, MAX_TILES).map((c) => loadArt(c.issuer)),
   )
   if (art.length > 0) drawDeck(ctx, art, Math.max(afterSummary + 40, 726))
 

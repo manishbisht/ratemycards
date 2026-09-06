@@ -86,3 +86,25 @@
   font-variant-numeric: tabular-nums;
   color: var(--text-tertiary);
 }
+
+/* The front card's name. Bottom-left, so it clears the logo the art draws
+   top-left and the status dot pinned top-right. At 10px most names fit the
+   116px of tile between those insets on one line; the longest in the catalogue
+   -- `Manchester United Platinum` -- takes two, which still ends well clear of
+   the logo, and the clamp stops anything longer than that from climbing into
+   it. Colour is set per tile, since the palette paints some issuers light and
+   some dark. */
+.name {
+  position: absolute;
+  left: 11px;
+  right: 9px;
+  bottom: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

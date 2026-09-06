@@ -1,5 +1,5 @@
 import type { Card } from '../data/cards'
-import { cardArtSrc } from '../data/cardArt'
+import { cardArtSrc, cardArtTone } from '../data/cardArt'
 import { STATUS_COLOR } from '../data/verification'
 import type { VerificationStatus } from '../state/walletTypes'
 import styles from './DeckStrip.module.css'
@@ -26,9 +26,13 @@ const DOT: Record<VerificationStatus, string> = {
 
 /**
  * The pile of chosen cards on the picker. A tile is the card's own artwork at
- * the 1.6 it is drawn at and nothing else: the art already prints the card
- * name, so a label over it would only land on top of that. The name reaches
- * screen readers through the image's alt text instead.
+ * the 1.6 it is drawn at, and the front card's name printed over it.
+ *
+ * ONLY THE FRONT CARD IS NAMED, because it is the only one a name would fit on:
+ * every card behind it is covered down to a `--tile-step` sliver, which holds
+ * the status dot and nothing else. The name sits bottom-left, clear of the
+ * logo the art puts top-left and the dot pinned top-right, and takes its colour
+ * from whether the issuer's tile is painted light or dark.
  *
  * The first card sits on top and whole; every card after it steps to the right
  * and *behind*, so what shows of it is the right-hand edge. That is the only
@@ -98,13 +102,29 @@ export function DeckStrip({
           >
             <img
               className={styles.art}
-              src={cardArtSrc(card.issuer, card.name)}
+              src={cardArtSrc(card.issuer)}
               alt={`${card.issuer} ${card.name}`}
               // An unverified card is dimmed on its artwork, never on the tile:
               // fading the tile itself would make it translucent, and the cards
               // stacked behind it would show through.
               style={{ opacity: verified ? 1 : 0.4 }}
             />
+            {i === 0 ? (
+              <span
+                className={styles.name}
+                style={{
+                  color:
+                    cardArtTone(card.issuer) === 'light'
+                      ? 'rgba(10,10,15,0.82)'
+                      : 'rgba(255,255,255,0.94)',
+                  opacity: verified ? 1 : 0.55,
+                }}
+                /* The image's alt text already reads out issuer and name. */
+                aria-hidden="true"
+              >
+                {card.name}
+              </span>
+            ) : null}
             {showStatus ? (
               <span
                 className={styles.dot}

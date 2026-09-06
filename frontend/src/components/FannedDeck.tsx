@@ -42,7 +42,7 @@ export function FannedDeck({
               borderColor: `rgba(255,255,255,${lerp(0.14, 0.22, t).toFixed(3)})`,
             }}
           >
-            <img className={styles.art} src={cardArtSrc(card.issuer, card.name)} alt="" aria-hidden="true" />
+            <img className={styles.art} src={cardArtSrc(card.issuer)} alt="" aria-hidden="true" />
             <span
               className={styles.label}
               style={{

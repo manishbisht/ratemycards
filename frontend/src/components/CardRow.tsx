@@ -25,7 +25,7 @@ export function CardRow({
       aria-pressed={added}
       aria-label={`${added ? 'Remove' : 'Add'} ${name}`}
     >
-      <CardArt issuer={issuer} name={name} />
+      <CardArt issuer={issuer} />
       <span className={styles.text}>
         <span className={styles.name}>{name}</span>
         <span className={styles.issuer}>{issuer}</span>

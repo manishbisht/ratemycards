@@ -15,28 +15,19 @@ const BANK_ART: Record<string, string> = {
   'Bank of Baroda': 'bank-of-baroda',
 }
 
-const CARD_ART: Record<string, string> = {
-  'HDFC|Infinia Metal': 'hdfc-infinia-metal',
-  'ICICI|Emeralde Private Metal': 'icici-emeralde-private-metal',
-  'Axis|Primus': 'axis-primus',
-  'Axis|Olympus': 'axis-olympus',
-  'American Express|Centurion Charge Card': 'american-express-centurion-charge-card',
-  'American Express|Platinum Charge Card': 'american-express-platinum-charge-card',
-  'Kotak|White Reserve': 'kotak-white-reserve',
-  'SBI|AURUM': 'sbi-aurum',
-  'IndusInd|Pioneer Heritage': 'indusind-pioneer-heritage',
-  'IDFC FIRST|Mayura': 'idfc-first-mayura',
-  'HSBC|Privé': 'hsbc-prive',
-  'AU|Zenith': 'au-zenith',
-  'RBL|World Safari': 'rbl-world-safari',
-  'Bank of Baroda|Etihad Guest Premium': 'bank-of-baroda-etihad-guest-premium',
+/**
+ * Which way a tile is painted. The palette is split on purpose -- an issuer
+ * whose logo is a bright mark gets a dark tile, and one whose mark is dark gets
+ * a pale tile -- so anything drawn on top of the art has to know which it is
+ * landing on. Generic art is dark, so an unknown issuer is too.
+ */
+const LIGHT_TILE = new Set(['Axis', 'Kotak', 'RBL', 'IndusInd', 'IDFC FIRST'])
+
+export function cardArtTone(issuer: string): 'light' | 'dark' {
+  return LIGHT_TILE.has(issuer) ? 'light' : 'dark'
 }
 
-/** Resolves dedicated art first, then its local issuer card, then generic art. */
-export function cardArtSrc(issuer: string, name: string): string {
-  const card = CARD_ART[`${issuer}|${name}`]
-  if (card) return `${ART_ROOT}/cards/${card}.svg`
-
-  const bank = BANK_ART[issuer]
-  return `${ART_ROOT}/banks/${bank ?? 'generic'}.svg`
+/** Resolves the issuer's tile, falling back to generic art for a new issuer. */
+export function cardArtSrc(issuer: string): string {
+  return `${ART_ROOT}/banks/${BANK_ART[issuer] ?? 'generic'}.svg`
 }

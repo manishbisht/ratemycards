@@ -234,11 +234,10 @@ export function ProfilePage({ username }: { username: string }) {
       </div>
 
       {/* The picker's pile, not the fanned deck this screen used to draw.
-          FannedDeck crops landscape card art into a portrait tile and prints
-          the card's name over the top of artwork that already carries it;
-          DeckStrip keeps the art at the 1.6 it was drawn at and lets it speak
-          for itself. Every card on a profile is verified -- that is what the
-          public projection returns -- so the status is a constant here. */}
+          FannedDeck crops landscape card art into a portrait tile; DeckStrip
+          keeps it at the 1.6 it was drawn at and names the front card over it.
+          Every card on a profile is verified -- that is what the public
+          projection returns -- so the status is a constant here. */}
       <DeckStrip
         cards={view.cards}
         statusOf={() => 'verified'}

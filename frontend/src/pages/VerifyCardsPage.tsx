@@ -179,7 +179,7 @@ export function VerifyCardsPage() {
             return (
               <div key={card.id} className={styles.row} style={{ borderColor: rowBorder }}>
                 <div className={styles.rowMain}>
-                  <CardArt issuer={card.issuer} name={card.name} />
+                  <CardArt issuer={card.issuer} />
                   <div className={styles.rowText}>
                     <div className={styles.rowName}>{card.name}</div>
                     <div
